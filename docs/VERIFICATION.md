@@ -2,6 +2,8 @@
 
 This checklist separates local automated checks from checks that require real Google, Supabase, and Vercel configuration. Commands below are reproducible instructions, not a claim that they have already passed. Consult the build handoff for the results of the current local run.
 
+The repository's `.github/workflows/ci.yml` repeats schema validation, TypeScript, ESLint, unit/privacy tests, and the production build on pushes and pull requests. It needs no production credentials and never pushes a database schema. The local HTTP runner remains a separate check against a running local app.
+
 ## Local automated checks
 
 Install the locked dependencies, then run:
@@ -23,6 +25,8 @@ The automated tests use synthetic data. They cover HMAC normalization, key separ
 With the app running in another terminal, `npm run test:smoke` runs 15 HTTP checks against `http://127.0.0.1:3000`. They verify login rendering, logged-out redirects, JSON API rejections, and an empty unauthenticated session. Set `SMOKE_ORIGIN` to use a different local origin. These requests carry no session cookies and do not create database records.
 
 ## Pending live checks
+
+The local app now has a separate, working development path: `npm run local`, followed by `npm run test:local`. Its two-account checks exercise a real portable PostgreSQL database. Production Google/Supabase checks below still require the owner's service configuration; local success does not verify those external services.
 
 These checks require the owner to configure Google OAuth and Supabase. Leave each item unchecked until it has been observed against the intended environment.
 
