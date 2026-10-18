@@ -1,0 +1,3 @@
+export default function Loading() {
+  return <div role="status" aria-label="Loading discussions" className="animate-pulse"><div className="mb-4 h-3 w-32 rounded bg-slate-200" /><div className="mb-3 h-9 w-3/4 rounded-lg bg-slate-200" /><div className="mb-8 h-4 w-1/2 rounded bg-slate-200" /><div className="mb-7 h-20 rounded-2xl border border-slate-200 bg-white" />{[0, 1, 2].map((item) => <div key={item} className="mb-4 rounded-2xl border border-slate-200 bg-white p-6"><div className="mb-5 h-3 w-1/4 rounded bg-slate-100" /><div className="mb-4 h-5 w-3/4 rounded bg-slate-100" /><div className="mb-2 h-3 w-full rounded bg-slate-100" /><div className="h-3 w-2/3 rounded bg-slate-100" /></div>)}<span className="sr-only">Loading discussions…</span></div>;
+}

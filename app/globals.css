@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { @apply scroll-smooth; }
+  body { @apply min-h-screen; }
+  ::selection { @apply bg-indigo-100 text-indigo-950; }
+  :focus-visible { @apply outline outline-2 outline-offset-4 outline-indigo-600; }
+  button, input, select, textarea { font: inherit; }
+  button:disabled { @apply cursor-not-allowed; }
+}

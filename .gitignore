@@ -1,0 +1,16 @@
+/node_modules/
+/.next/
+/out/
+/dist/
+/coverage/
+/.test-build/
+*.tsbuildinfo
+next-env.d.ts
+*.log
+.DS_Store
+Thumbs.db
+
+# secrets
+.env
+.env.*
+!.env.example
