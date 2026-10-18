@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
+import LocalLogin from "@/components/auth/LocalLogin";
 import { Icon, boardIcons } from "@/components/ui/Icon";
 import { BOARDS } from "@/lib/boards";
+import { isLocalDemo } from "@/lib/local-mode";
 
 export const metadata: Metadata = { title: "Welcome" };
 
@@ -15,9 +17,19 @@ const authErrors: Record<string, string> = {
 };
 
 export default function LoginPage({ searchParams }: { searchParams: { error?: string | string[] } }) {
+  const localDemo = isLocalDemo();
   const configured = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.NEXTAUTH_SECRET && (process.env.ANON_PEPPER?.length || 0) >= 32 && process.env.DATABASE_URL);
   const errorCode = typeof searchParams.error === "string" ? searchParams.error : undefined;
   const allowedDomain = process.env.ALLOWED_EMAIL_DOMAIN?.trim().replace(/^@/, "");
+  const steps = localDemo ? [
+    { number: "01", title: "Choose a local account", text: "Open a shared demo account to explore the forum on this computer." },
+    { number: "02", title: "Start a conversation", text: "Create a post, choose a board, and share your thoughts." },
+    { number: "03", title: "Try another perspective", text: "Log out and choose the other account to test comments and votes." },
+  ] : [
+    { number: "01", title: "Verify with Google", text: "Your email verifies your account. We don’t store it in our database." },
+    { number: "02", title: "Choose your campus alias", text: "Pick a permanent username. Your real name stays off your profile." },
+    { number: "03", title: "Find your conversation", text: "Ask, share, and connect with your campus community." },
+  ];
   return <main className="grid min-h-screen bg-white lg:grid-cols-[1.08fr_1fr]">
     <section className="relative flex overflow-hidden bg-[#161a3b] px-6 py-7 text-white sm:px-12 lg:min-h-screen lg:flex-col lg:justify-between lg:px-14 lg:py-10 xl:px-20">
       <div className="pointer-events-none absolute -left-40 top-20 h-[600px] w-[600px] rounded-full bg-indigo-700/20 blur-[100px]" aria-hidden="true" /><div className="pointer-events-none absolute -right-52 bottom-0 h-[500px] w-[500px] rounded-full bg-indigo-400/10 blur-[100px]" aria-hidden="true" />
@@ -29,12 +41,11 @@ export default function LoginPage({ searchParams }: { searchParams: { error?: st
     </section>
     <section className="flex min-h-[calc(100vh-96px)] flex-col px-6 py-10 sm:px-12 lg:min-h-screen lg:px-14 lg:py-10 xl:px-20"><div className="hidden items-center justify-end gap-1.5 text-[10px] text-slate-400 lg:flex"><Icon name="shield" className="h-3.5 w-3.5" />An alias. A little more freedom.</div>
       <div className="mx-auto my-auto w-full max-w-[370px] py-8"><span className="mb-6 inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-100 bg-indigo-50 text-indigo-500"><Icon name="sparkles" className="h-6 w-6" /></span><p className="mb-2 text-[10px] font-bold uppercase tracking-[0.17em] text-indigo-500">Your seat at the conversation</p><h2 className="text-[32px] font-bold tracking-tight text-slate-900">Welcome to your space.</h2><p className="mb-8 mt-3 text-sm leading-7 text-slate-500">Real campus life. Real conversations.<br />A little more room to be yourself.</p>
-        {errorCode && <p role="alert" className="mb-5 rounded-xl border border-red-100 bg-red-50 p-4 text-xs leading-6 text-red-700">{authErrors[errorCode] || authErrors.Default}</p>}
-        <GoogleSignInButton configured={configured} />
-        <p className="mt-4 text-center text-[11px] leading-5 text-slate-400">{allowedDomain ? <>Use your <span className="font-medium text-slate-600">@{allowedDomain}</span> college Google account.</> : "A verified Google account is required to join."}</p>
+        {errorCode && <p role="alert" className="mb-5 rounded-xl border border-red-100 bg-red-50 p-4 text-xs leading-6 text-red-700">{localDemo ? "We couldn’t open this local account. Please try again." : authErrors[errorCode] || authErrors.Default}</p>}
+        {localDemo ? <LocalLogin /> : <><GoogleSignInButton configured={configured} /><p className="mt-4 text-center text-[11px] leading-5 text-slate-400">{allowedDomain ? <>Use your <span className="font-medium text-slate-600">@{allowedDomain}</span> college Google account.</> : "A verified Google account is required to join."}</p></>}
         <div className="my-7 flex items-center gap-4"><span className="h-px flex-1 bg-slate-100" /><span className="text-[9px] font-medium uppercase tracking-[0.14em] text-slate-400">Here’s how it works</span><span className="h-px flex-1 bg-slate-100" /></div>
-        <div className="space-y-5">{[{ number: "01", title: "Verify with Google", text: "Your email verifies your account. We don’t store it in our database." }, { number: "02", title: "Choose your campus alias", text: "Pick a permanent username. Your real name stays off your profile." }, { number: "03", title: "Find your conversation", text: "Ask, share, and connect with your campus community." }].map((step) => <div key={step.number} className="flex gap-3.5"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-[9px] font-semibold text-slate-400">{step.number}</span><div><h3 className="text-xs font-semibold text-slate-700">{step.title}</h3><p className="mt-1 text-[11px] leading-5 text-slate-400">{step.text}</p></div></div>)}</div>
-        <details className="mt-8 border-t border-slate-100 pt-5"><summary className="cursor-pointer text-[11px] font-medium text-slate-500 transition hover:text-indigo-600">What anonymity means here</summary><div className="mt-3 space-y-2 text-[10px] leading-[1.8] text-slate-400"><p>The database stores an anonymous ID derived from your email with a secret key and your chosen username. It doesn’t store your email, real name, profile photo, Google ID, or IP address.</p><p>Google sees your sign-in. Hosting providers may keep IP logs. Someone with both the database and secret key can test a list of emails for matches. The details, timing, and writing style of a post can also identify its author.</p></div></details>
+        <div className="space-y-5">{steps.map((step) => <div key={step.number} className="flex gap-3.5"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-[9px] font-semibold text-slate-400">{step.number}</span><div><h3 className="text-xs font-semibold text-slate-700">{step.title}</h3><p className="mt-1 text-[11px] leading-5 text-slate-400">{step.text}</p></div></div>)}</div>
+        {localDemo ? <p className="mt-8 border-t border-slate-100 pt-5 text-[10px] leading-[1.8] text-slate-400">Local demo data is saved in this project folder. Anyone using these shared accounts can act as the same users. Use this mode to explore the app; don’t share private information.</p> : <details className="mt-8 border-t border-slate-100 pt-5"><summary className="cursor-pointer text-[11px] font-medium text-slate-500 transition hover:text-indigo-600">What anonymity means here</summary><div className="mt-3 space-y-2 text-[10px] leading-[1.8] text-slate-400"><p>The database stores an anonymous ID derived from your email with a secret key and your chosen username. It doesn’t store your email, real name, profile photo, Google ID, or IP address.</p><p>Google sees your sign-in. Hosting providers may keep IP logs. Someone with both the database and secret key can test a list of emails for matches. The details, timing, and writing style of a post can also identify its author.</p></div></details>}
       </div><p className="text-center text-[10px] text-slate-400">Be curious. Be respectful. Look out for each other.</p>
     </section>
   </main>;

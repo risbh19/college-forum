@@ -3,7 +3,7 @@ import { apiError, readJson } from "@/lib/api";
 import { authOptions } from "@/lib/auth";
 import { BOARD_SLUGS } from "@/lib/boards";
 import { prisma } from "@/lib/db";
-import { getPost, listPosts } from "@/lib/queries";
+import { getPost, InvalidCursorError, listPosts } from "@/lib/queries";
 import { postSchema } from "@/lib/validators";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +30,8 @@ export async function GET(request: Request): Promise<Response> {
       cursor: cursor ?? undefined,
     });
     return Response.json(page);
-  } catch {
+  } catch (error: unknown) {
+    if (error instanceof InvalidCursorError) return apiError(error.message, 400);
     return apiError("Something went wrong", 500);
   }
 }

@@ -12,12 +12,17 @@ A Reddit-style forum for one college where people can post and comment **anonymo
 |---|---|
 | Who can read | Logged-in users only (keeps the forum inside the college). |
 | Who can log in | Any verified Google account, or only `@ALLOWED_EMAIL_DOMAIN` if that env var is set. |
+| Local development | `npm run local` provides shared synthetic demo accounts and portable PostgreSQL without external setup. This is a user-requested development-only exception; production Google authentication is unchanged. |
 | Identity | `anonId = HMAC-SHA256(ANON_PEPPER, lowercase(email))`, first 32 hex chars. |
 | Public name | Username chosen once, 3–20 chars `[a-zA-Z0-9_]`, unique case-insensitively, not changeable in v1. |
 | Boards | Fixed list in `lib/boards.ts`: general, cse, hostel, placements, confessions. |
 | Votes | One vote per user per post: UP or DOWN. Clicking the same vote again removes it. |
 | Deleting | Authors can delete their own posts (comments/votes cascade). No editing in v1. |
 | Out of scope (v1) | Moderation tools, image uploads, comment voting, nested replies, notifications, username change, account deletion UI. |
+
+### Local app boundary
+
+The local credentials provider exists only when `NODE_ENV=development`, `COLLEGE_FORUM_LOCAL=1`, the app origin is HTTP loopback, and the PostgreSQL URL names the dedicated `college_forum_local` database on loopback. The launcher binds both services to this computer. Production builds cannot enable local credentials. Synthetic local accounts are shared and not private; the UI states this explicitly. Local state persists under ignored `.local/`, without reading or creating `.env`. The data model and API response privacy rules remain the same.
 
 ## 3. Data model
 

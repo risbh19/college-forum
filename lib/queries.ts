@@ -28,6 +28,13 @@ type CommentRow = Prisma.CommentGetPayload<{ select: typeof commentSelect }>;
 type QueryClient = Pick<Prisma.TransactionClient, "vote">;
 type VoteState = { score: number; myVote: VoteValue | null };
 
+export class InvalidCursorError extends Error {
+  constructor() {
+    super("This page has expired. Refresh the feed to continue.");
+    this.name = "InvalidCursorError";
+  }
+}
+
 function toPostSummary(row: PostRow, viewerId: string, vote: VoteState): PostSummary {
   return {
     id: row.id,
@@ -95,13 +102,28 @@ export async function listPosts({
   board?: string;
   cursor?: string;
 }): Promise<PaginatedPosts> {
-  const rows = await prisma.post.findMany({
-    where: board ? { board } : undefined,
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: 21,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    select: postSelect,
-  });
+  const readPage = async (client: Pick<Prisma.TransactionClient, "post">) => {
+    if (cursor) {
+      const anchor = await client.post.findUnique({
+        where: { id: cursor },
+        select: { board: true },
+      });
+      if (!anchor || (board && anchor.board !== board)) throw new InvalidCursorError();
+    }
+
+    return client.post.findMany({
+      where: board ? { board } : undefined,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 21,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: postSelect,
+    });
+  };
+  // Keep the anchor check and page in one snapshot: a concurrent deletion must
+  // not silently turn a valid next page into an empty end of the feed.
+  const rows = cursor
+    ? await prisma.$transaction(readPage, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead })
+    : await readPage(prisma);
   const page = rows.slice(0, 20);
   const states = await voteStates(page.map((row) => row.id), viewerId);
 

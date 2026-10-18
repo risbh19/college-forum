@@ -3,6 +3,7 @@
 /out/
 /dist/
 /coverage/
+/.local/
 /.test-build/
 *.tsbuildinfo
 next-env.d.ts

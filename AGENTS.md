@@ -24,6 +24,14 @@ Next 14 reminders: route-handler/page `params` is a plain object (`{ params }: {
 5. Never `console.log` request bodies, tokens, sessions or env values.
 6. Never read, print, open or commit `.env`. Do not ask for secret values; use the names in `.env.example`.
 
+## Local app (user-requested development mode)
+
+The user requested a usable local app without external account setup. `npm run local` starts portable PostgreSQL with the same Prisma schema, seed content, and development-only shared demo accounts. Local state and generated connection settings live only in ignored `.local/`; never print those settings or commit that folder. `Start Local.cmd` launches it on Windows.
+
+`lib/local-mode.ts` must keep local credentials disabled outside `NODE_ENV=development`, the explicit `COLLEGE_FORUM_LOCAL=1` flag, loopback app/database hosts, and the dedicated `college_forum_local` database. Never weaken these boundaries. Production continues using verified Google accounts, HMAC identities, Prisma 6, PostgreSQL/Supabase, and the documented privacy rules. Local demo identities are synthetic, shared, and clearly labeled as not private.
+
+`npm run test:local` runs actual HTTP/account/database checks against the running local app and removes its temporary posts. Never target production or external hosts with this runner.
+
 ## Commands
 
 ```bash

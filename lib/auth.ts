@@ -1,7 +1,9 @@
 import type { NextAuthOptions } from 'next-auth';
 import GoogleProvider, { type GoogleProfile } from 'next-auth/providers/google';
+import CredentialsProvider from 'next-auth/providers/credentials';
 import { emailToAnonId } from './hash';
 import { prisma } from './db';
+import { isLocalDemo, localAccountId, LOCAL_ACCOUNTS } from './local-mode';
 
 async function usernameFor(anonId: string): Promise<string | null> {
   const user = await prisma.user.findUnique({
@@ -14,6 +16,16 @@ async function usernameFor(anonId: string): Promise<string | null> {
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   providers: [
+    ...(isLocalDemo() ? [CredentialsProvider({
+      id: 'local-demo',
+      name: 'Local demo',
+      credentials: { account: { label: 'Demo account', type: 'text' } },
+      async authorize(credentials) {
+        if (!isLocalDemo()) return null;
+        const id = localAccountId(credentials?.account);
+        return id ? { id } : null;
+      },
+    })] : []),
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID ?? '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
@@ -22,14 +34,21 @@ export const authOptions: NextAuthOptions = {
   ],
   session: { strategy: 'jwt' },
   callbacks: {
-    async signIn({ profile }) {
+    async signIn({ profile, account, user }) {
+      if (account?.provider === 'local-demo') {
+        return isLocalDemo() && Object.values(LOCAL_ACCOUNTS).some((id) => id === user.id);
+      }
       const google = profile as GoogleProfile | undefined;
       if (!google?.email || google.email_verified !== true) return false;
       const domain = process.env.ALLOWED_EMAIL_DOMAIN?.trim().toLowerCase();
       if (domain && !google.email.trim().toLowerCase().endsWith(`@${domain}`)) return false;
       return true;
     },
-    async jwt({ token, profile, trigger }) {
+    async jwt({ token, profile, trigger, account, user }) {
+      if (account?.provider === 'local-demo' && user && isLocalDemo()
+        && Object.values(LOCAL_ACCOUNTS).some((id) => id === user.id)) {
+        return { anonId: user.id, username: await usernameFor(user.id) };
+      }
       if (profile?.email) {
         const anonId = emailToAnonId(profile.email);
         // Never preserve the default provider token's identity fields.

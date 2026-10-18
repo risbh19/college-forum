@@ -2,15 +2,19 @@
   "name": "college-forum",
   "version": "1.0.0",
   "private": true,
-  "engines": { "node": ">=20.9.0" },
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "next dev",
+    "local": "node scripts/local.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:smoke": "node scripts/smoke.mjs",
+    "test:local": "node scripts/local-check.mjs",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:generate": "prisma generate"
@@ -29,6 +33,7 @@
     "@types/react": "18.3.28",
     "@types/react-dom": "18.3.7",
     "autoprefixer": "10.4.24",
+    "embedded-postgres": "16.14.0-beta.17",
     "eslint": "8.57.1",
     "eslint-config-next": "14.2.35",
     "postcss": "8.5.8",
