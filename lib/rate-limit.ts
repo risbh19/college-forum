@@ -16,6 +16,8 @@ const accountActions = new Map<string, Action>([
 ]);
 type Environment = Record<string, string | undefined>;
 type Limiters = Record<Action, Pick<Ratelimit, 'limit'>>;
+type FailureReason = 'CONFIG_INVALID' | 'VERCEL_ENV_MISSING' | 'CLIENT_IP_MISSING'
+  | 'REDIS_TIMEOUT' | 'REDIS_AUTH_OR_WRITE_FAILED' | 'REDIS_OTHER';
 type Options = {
   environment?: () => Environment;
   localDemo?: () => boolean;
@@ -73,7 +75,30 @@ function canonicalIp(value: string | null): string {
   return normalized;
 }
 
-function unavailable() {
+function redisFailureReason(error: unknown): FailureReason {
+  try {
+    // Inspect only to classify. SDK messages/causes may contain private request data.
+    const failures = [error, error instanceof Error ? error.cause : undefined];
+    for (const failure of failures) {
+      if (!failure || typeof failure !== 'object') continue;
+      const details = failure as { name?: unknown; code?: unknown; status?: unknown; statusCode?: unknown; message?: unknown };
+      const message = typeof details.message === 'string' ? details.message : '';
+      if (details.name === 'UrlError') return 'CONFIG_INVALID';
+      if (details.name === 'TimeoutError' || details.name === 'AbortError'
+        || (typeof details.code === 'string' && /^(?:ETIMEDOUT|UND_ERR_(?:CONNECT|HEADERS|BODY)_TIMEOUT)$/.test(details.code))
+        || /\b(?:timeout|timed out)\b/i.test(message)) return 'REDIS_TIMEOUT';
+      if (details.status === 401 || details.status === 403 || details.statusCode === 401 || details.statusCode === 403
+        || /\b(?:unauthori[sz]ed|forbidden|wrongpass|noauth|noperm|readonly)\b|read[- ]only|(?:invalid|missing|expired)\s+(?:token|credentials?)|(?:permission|access)\s+denied|(?:authentication|authorization|write)\s+failed|command\s+(?:is\s+)?not\s+(?:allowed|permitted)/i.test(message)) {
+        return 'REDIS_AUTH_OR_WRITE_FAILED';
+      }
+    }
+  } catch { /* Unusual thrown values must never escape into diagnostics or responses. */ }
+  return 'REDIS_OTHER';
+}
+
+function unavailable(reason: FailureReason) {
+  // Exactly one fixed code: never include errors, configuration, addresses or IDs.
+  console.error(reason);
   return Response.json({ error: 'Rate limiting temporarily unavailable. Try again shortly.' }, {
     status: 503, headers: { 'Retry-After': '5', 'Cache-Control': 'private, no-store' },
   });
@@ -87,22 +112,26 @@ export function createRateLimitGuard(options: Options = {}) {
   let cached: { url: string; token: string; limiters: Limiters } | undefined;
 
   async function consume(action: Action, identity: string): Promise<Response | null> {
+    let env: Environment;
+    let config: ReturnType<typeof configuration>;
     try {
-      const env = environment();
-      const config = configuration(env);
+      env = environment();
+      config = configuration(env);
+    } catch { return unavailable('CONFIG_INVALID'); }
+    try {
       if (!cached || cached.url !== config.url || cached.token !== config.token) {
         cached = { url: config.url, token: config.token, limiters: (options.createLimiters ?? createUpstashLimiters)(env) };
       }
       const result = await cached.limiters[action].limit(await privateIdentifier(config.secret, action, identity));
       await result.pending;
-      if (result.reason === 'timeout' || !Number.isFinite(result.reset)) return unavailable();
+      if (result.reason === 'timeout') return unavailable('REDIS_TIMEOUT');
+      if (!Number.isFinite(result.reset)) return unavailable('REDIS_OTHER');
       if (result.success) return null;
       return Response.json({ error: 'Too many requests. Try again shortly.' }, {
         status: 429, headers: { 'Retry-After': String(Math.max(1, Math.ceil((result.reset - now()) / 1000))), 'Cache-Control': 'private, no-store' },
       });
-    } catch {
-      // SDK errors can contain credentials or request data. Do not log or return them.
-      return unavailable();
+    } catch (error) {
+      return unavailable(redisFailureReason(error));
     }
   }
 
@@ -110,17 +139,21 @@ export function createRateLimitGuard(options: Options = {}) {
     async account(method: string, path: string, anonId: string): Promise<Response | null> {
       const action = accountActions.get(path);
       if (method !== 'POST' || !action || localDemo()) return null;
-      if (!/^[a-f0-9]{32}$/.test(anonId)) return unavailable();
+      if (!/^[a-f0-9]{32}$/.test(anonId)) return unavailable('CONFIG_INVALID');
       return consume(action, anonId);
     },
     async auth(request: Request): Promise<Response | null> {
       const path = new URL(request.url).pathname;
       if (!(path === '/api/auth' || path.startsWith('/api/auth/')) || localDemo()) return null;
-      try {
-        // Only Vercel's overwritten header is trusted. Never fall back to caller-supplied forwarding headers.
-        if (environment().VERCEL !== '1') return unavailable();
-        return consume('auth', canonicalIp(request.headers.get('x-vercel-forwarded-for')));
-      } catch { return unavailable(); }
+      let env: Environment;
+      try { env = environment(); }
+      catch { return unavailable('CONFIG_INVALID'); }
+      // Only Vercel's overwritten header is trusted. Never fall back to caller-supplied forwarding headers.
+      if (env.VERCEL !== '1') return unavailable('VERCEL_ENV_MISSING');
+      let ip: string;
+      try { ip = canonicalIp(request.headers.get('x-vercel-forwarded-for')); }
+      catch { return unavailable('CLIENT_IP_MISSING'); }
+      return consume('auth', ip);
     },
   };
 }
