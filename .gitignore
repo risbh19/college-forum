@@ -4,6 +4,13 @@
 /dist/
 /coverage/
 /.local/
+/backend/.venv/
+/.vercel/
+/deploy/*.env
+**/__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
 /.test-build/
 *.tsbuildinfo
 next-env.d.ts

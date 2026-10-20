@@ -3,6 +3,7 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 import { encode, type JWT } from 'next-auth/jwt'
 import { middleware } from '../middleware'
+import { COLLEGE_AUTH_POLICY, LOCAL_AUTH_POLICY } from '../lib/access-policy'
 
 const TEST_SECRET = 'synthetic-middleware-secret-only-for-tests-32'
 const ORIGIN = 'http://localhost:3000'
@@ -46,6 +47,7 @@ test('logged-out users are redirected from protected pages and can open login', 
       assertRedirect(await request(path), '/login')
     }
     assertAllowed(await request('/login'))
+    assertAllowed(await request('/privacy'))
   })
 })
 
@@ -75,7 +77,7 @@ test('auth endpoint exemptions respect the exact path boundary', async () => {
 
 test('accounts without a username can access setup and only its exact API endpoint', async () => {
   await withTestSecret(async () => {
-    const token = { anonId: 'a'.repeat(32), username: null }
+    const token = { anonId: 'a'.repeat(32), authPolicy: COLLEGE_AUTH_POLICY, username: null }
     assertAllowed(await request('/setup-username', token))
     assertAllowed(await request('/api/username', token))
     assertAllowed(await request('/api/auth/session', token))
@@ -93,7 +95,7 @@ test('accounts without a username can access setup and only its exact API endpoi
 
 test('completed accounts reach protected content and are redirected away from auth setup', async () => {
   await withTestSecret(async () => {
-    const token = { anonId: 'b'.repeat(32), username: 'shadowcoder' }
+    const token = { anonId: 'b'.repeat(32), authPolicy: COLLEGE_AUTH_POLICY, username: 'shadowcoder' }
     for (const path of ['/login', '/setup-username']) {
       assertRedirect(await request(path, token), '/')
     }
@@ -110,5 +112,15 @@ test('provider tokens without a derived anonymous identity do not grant access',
     const response = await request('/api/posts', token)
     assert.equal(response.status, 401)
     assert.deepEqual(await response.json(), { error: 'Login required' })
+  })
+})
+
+test('old unrestricted tokens and local-demo tokens cannot access production', async () => {
+  await withTestSecret(async () => {
+    for (const authPolicy of [undefined, 'old-policy', LOCAL_AUTH_POLICY]) {
+      const token = { anonId: 'a'.repeat(32), username: 'old_user', authPolicy }
+      assertRedirect(await request('/', token), '/login')
+      assert.equal((await request('/api/posts', token)).status, 401)
+    }
   })
 })

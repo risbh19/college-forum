@@ -6,14 +6,14 @@ type LocalEnvironment = {
   NODE_ENV?: string
   COLLEGE_FORUM_LOCAL?: string
   NEXTAUTH_URL?: string
-  DATABASE_URL?: string
+  BACKEND_URL?: string
 }
 
 const VALID: LocalEnvironment = {
   NODE_ENV: 'development',
   COLLEGE_FORUM_LOCAL: '1',
   NEXTAUTH_URL: 'http://localhost:3000',
-  DATABASE_URL: 'postgresql://synthetic:synthetic@localhost:5432/college_forum_local',
+  BACKEND_URL: 'http://localhost:8000',
 }
 
 function withEnvironment(override: LocalEnvironment, run: () => void) {
@@ -47,12 +47,12 @@ test('local demo is enabled only for the explicit development flag', () => {
   }
 })
 
-test('local demo permits recognized loopback hostnames and PostgreSQL schemes', () => {
+test('local demo permits recognized loopback hostnames', () => {
   for (const host of ['localhost', '127.0.0.1', '[::1]']) {
-    for (const scheme of ['postgres', 'postgresql']) {
+    for (const scheme of ['http']) {
       withEnvironment({
         NEXTAUTH_URL: `http://${host}:3000`,
-        DATABASE_URL: `${scheme}://synthetic:synthetic@${host}:5432/college_forum_local`,
+        BACKEND_URL: `${scheme}://${host}:8000`,
       }, () => assert.equal(isLocalDemo(), true))
     }
   }
@@ -68,15 +68,10 @@ test('local demo rejects remote, deceptive, missing, and malformed app origins',
   }
 })
 
-test('local demo rejects remote or incorrectly named databases', () => {
-  for (const DATABASE_URL of [
-    undefined, '', 'invalid', 'https://localhost/college_forum_local',
-    'postgresql://synthetic:synthetic@database.example:5432/college_forum_local',
-    'postgresql://synthetic:synthetic@localhost.attacker.invalid:5432/college_forum_local',
-    'postgresql://localhost@attacker.invalid:5432/college_forum_local',
-    'postgresql://localhost:5432/production', 'postgresql://localhost:5432/college_forum_local_extra',
-    'postgresql://localhost:5432/college_forum_local/', 'postgresql://localhost:5432/',
-  ]) {
-    withEnvironment({ DATABASE_URL }, () => assert.equal(isLocalDemo(), false))
+test('local demo rejects unsafe backend URLs', () => {
+  for (const BACKEND_URL of [undefined, '', 'invalid', 'https://localhost:8000',
+    'http://backend.example', 'http://localhost.attacker.invalid', 'http://localhost@attacker.invalid',
+    'http://localhost:8000/api', 'http://user:pass@localhost:8000', 'http://localhost:8000/?key=x']) {
+    withEnvironment({ BACKEND_URL }, () => assert.equal(isLocalDemo(), false))
   }
 })

@@ -17,8 +17,6 @@ jobs:
     timeout-minutes: 15
     env:
       NEXT_TELEMETRY_DISABLED: '1'
-      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/college_forum_ci
-      DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/college_forum_ci
     steps:
       - uses: actions/checkout@v7
         with:
@@ -29,8 +27,18 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
-      - name: Validate database schema
-        run: npx prisma validate
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install locked backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: Backend security and API tests
+        working-directory: backend
+        run: python -m pytest -q
+      - name: Audit production frontend dependencies
+        run: npm audit --omit=dev --audit-level=high
       - name: Check types
         run: npm run typecheck
       - name: Lint
@@ -39,3 +47,5 @@ jobs:
         run: npm test
       - name: Production build
         run: npm run build
+      - name: Build production FastAPI container
+        run: docker build --tag college-forum-api:ci ./backend

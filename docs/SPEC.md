@@ -11,7 +11,7 @@ A Reddit-style forum for one college where people can post and comment **anonymo
 | Topic | Decision |
 |---|---|
 | Who can read | Logged-in users only (keeps the forum inside the college). |
-| Who can log in | Any verified Google account, or only `@ALLOWED_EMAIL_DOMAIN` if that env var is set. |
+| Who can log in | Only verified college-managed `@rkgit.edu.in` Google Workspace accounts, with the exact matching validated `hd` claim. The user requested this fixed college policy; no environment override broadens it. |
 | Local development | `npm run local` provides shared synthetic demo accounts and portable PostgreSQL without external setup. This is a user-requested development-only exception; production Google authentication is unchanged. |
 | Identity | `anonId = HMAC-SHA256(ANON_PEPPER, lowercase(email))`, first 32 hex chars. |
 | Public name | Username chosen once, 3–20 chars `[a-zA-Z0-9_]`, unique case-insensitively, not changeable in v1. |
@@ -37,8 +37,8 @@ All foreign keys use `onDelete: Cascade`. Indexes: `Post(board, createdAt)`, `Po
 ## 4. Auth flow
 
 1. `/login` → Google OAuth (scopes: `openid email profile`, nothing more).
-2. `signIn` callback: reject if no email, email not verified, or domain not allowed.
-3. `jwt` callback (first request after sign-in): compute `anonId` from `profile.email`, look up username, return a **fresh** token `{ anonId, username }`. Email, name, picture and Google ID are dropped here.
+2. `signIn` callback: require Google provider, boolean email_verified=true, exact normalized email domain rkgit.edu.in and exact hd=rkgit.edu.in. Reject other/missing claims.
+3. `jwt` callback (first request after sign-in): compute `anonId` from `profile.email`, look up username, return a **fresh** token `{ anonId, username, authPolicy }` where authPolicy is a non-identifying authorization-policy version. Email, name, picture and Google ID are dropped here.
 4. `session` callback: rebuild the session as `{ user: { id: anonId, username } }`.
 5. `middleware.ts`: not logged in → `/login` (API: 401). Logged in without username → `/setup-username` (API: 403). Fully set up → `/login` and `/setup-username` redirect to `/`.
 6. `/setup-username` POSTs `/api/username`, then calls `update()` from `useSession()` so the JWT picks up the username, then navigates to `/`.
@@ -74,7 +74,7 @@ type CommentView = { id: string; body: string; createdAt: string; author: Author
 
 **Protected**
 - The database holds no email, name, picture, Google ID or IP. A leaked database alone cannot be linked to emails because the hash is keyed with `ANON_PEPPER`.
-- JWT/session carry only `anonId` and `username`.
+- JWT carries anonId, username and a non-identifying authPolicy version; the browser session exposes only its own account id, username and expiry. Old unrestricted tokens must sign in again.
 - Public API responses never contain the anonId.
 
 **Honest limits (do not claim more than this in the UI or README)**
@@ -91,7 +91,7 @@ type CommentView = { id: string; body: string; createdAt: string; author: Author
 | `NEXTAUTH_SECRET` | signs/encrypts the JWT (`openssl rand -base64 32`) |
 | `NEXTAUTH_URL` | `http://localhost:3000` locally, the Vercel URL in production |
 | `ANON_PEPPER` | HMAC key for anonymous IDs (`openssl rand -hex 32`, min 32 chars) |
-| `ALLOWED_EMAIL_DOMAIN` | optional, e.g. `college.edu` |
+| `ALLOWED_EMAIL_DOMAIN` | rkgit.edu.in; fixed in code, cannot broaden access |
 | `DATABASE_URL` | Supabase pooled connection (runtime, serverless-friendly) |
 | `DIRECT_URL` | Supabase direct/session connection (used by `prisma db push`) |
 

@@ -1,0 +1,25 @@
+# Paid Starter supports the pre-deploy migration command. Review cost before creating.
+services:
+  - type: web
+    name: rkgit-forum-api
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    preDeployCommand: python -m alembic -c alembic.ini upgrade head
+    healthCheckPath: /ready
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: COLLEGE_FORUM_LOCAL
+        value: '0'
+      - key: BACKEND_URL
+        sync: false
+      - key: BACKEND_SHARED_SECRET
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false

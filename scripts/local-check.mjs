@@ -22,6 +22,7 @@ class Browser {
 
   async request(path, options = {}) {
     const headers = new Headers();
+    if (options.method && options.method !== 'GET' && !options.omitOrigin) headers.set('origin', options.origin ?? base.origin);
     if (this.cookies.size) {
       headers.set('cookie', [...this.cookies].map(([name, value]) => `${name}=${value}`).join('; '));
     }
@@ -153,6 +154,14 @@ try {
   check(secondSession.user.username === 'campusowl', 'Second seeded account username differs');
   check(firstSession.user.id !== secondSession.user.id, 'Local accounts do not have distinct identities');
   passed('two local accounts sign in through NextAuth with minimal sessions');
+  for (const origin of ['https://attacker.invalid', 'null', base.origin + '.attacker.invalid']) {
+    await api(one, '/api/posts', { method: 'POST', origin, json: {} }, 403, 'Cross-site mutation');
+  }
+  await api(one, '/api/posts', { method: 'POST', omitOrigin: true, json: {} }, 403, 'Missing-Origin mutation');
+  passed('authenticated cross-site and missing-Origin mutations are rejected');
+  await api(one, '/api/posts', { method: 'POST', json: { title: 'Strict payload', body: 'Example', board: 'general', userId: secondSession.user.id } }, 400, 'Unknown identity field');
+  await api(one, '/api/posts', { method: 'POST', raw: 'x'.repeat(65537) }, 413, 'Oversized body');
+  passed('unknown identity fields and oversized request bodies are rejected');
 
   const newSession = await newcomer.signIn('new-student');
   minimalSession(newSession);

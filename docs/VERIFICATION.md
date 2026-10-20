@@ -1,58 +1,46 @@
 # Verification
 
-This checklist separates local automated checks from checks that require real Google, Supabase, and Vercel configuration. Commands below are reproducible instructions, not a claim that they have already passed. Consult the build handoff for the results of the current local run.
-
-The repository's `.github/workflows/ci.yml` repeats schema validation, TypeScript, ESLint, unit/privacy tests, and the production build on pushes and pull requests. It needs no production credentials and never pushes a database schema. The local HTTP runner remains a separate check against a running local app.
-
-## Local automated checks
-
-Install the locked dependencies, then run:
+Run from the repository root with Node 20.9+ and Python 3.11+:
 
 ```sh
 npm ci
-npx prisma validate
-npx prisma generate
-npm run test
+npm run backend:install
+npm test
+npm run test:backend
 npm run typecheck
 npm run lint
 npm run build
+npm audit --omit=dev
 ```
 
-Prisma validation and production builds can require the environment variable names in `.env.example` to be configured. A successful build does not prove OAuth, a real database connection, or deployed infrastructure security. Do not share environment files or paste secret-bearing output into tickets.
+CI repeats backend tests, frontend tests/types/lint, the production npm dependency audit, and production build without real credentials or a production database. Backend tests use disposable SQLite; the local integration suite exercises real PostgreSQL.
 
-The automated tests use synthetic data. They cover HMAC normalization, key separation, minimum pepper length, validation boundaries, auth callback privacy, and actual middleware access decisions using encrypted synthetic session tokens. Middleware tests verify page redirects, API `401`/`403` responses, and exact auth/setup endpoint boundaries. They do not substitute for a two-account end-to-end run.
+With `npm run local` running in another terminal:
 
-With the app running in another terminal, `npm run test:smoke` runs 15 HTTP checks against `http://127.0.0.1:3000`. They verify login rendering, logged-out redirects, JSON API rejections, and an empty unauthenticated session. Set `SMOKE_ORIGIN` to use a different local origin. These requests carry no session cookies and do not create database records.
+```sh
+npm run test:local
+npm run test:smoke
+```
 
-## Pending live checks
+For an alternate printed port use `node scripts/local-check.mjs http://localhost:3001`. The local runner only accepts loopback targets. It checks sessions, onboarding, account ownership, strict errors, votes (including concurrent changes), comments, public response privacy, pagination/cursors, and cascading deletion. It removes its temporary posts and may initialize the third demo account as `localtester`.
 
-The local app now has a separate, working development path: `npm run local`, followed by `npm run test:local`. Its two-account checks exercise a real portable PostgreSQL database. Production Google/Supabase checks below still require the owner's service configuration; local success does not verify those external services.
+Backend tests cover unsigned/forged/expired/wrong-scope assertions, algorithm allowlisting, request binding, mutation replay, strict validation, ownership, votes, cascade behavior, pagination, shared database rate limits, bounds, generic errors, trusted hosts, production docs, and fail-closed configuration. Frontend tests cover HMAC compatibility, auth privacy, middleware controls, local boundaries, assertion signing, same-origin enforcement, bounded bodies, and deadlines.
 
-These checks require the owner to configure Google OAuth and Supabase. Leave each item unchecked until it has been observed against the intended environment.
+## Checks for a real deployment
 
-- [ ] The schema exists in the intended Supabase database, with `User`, `Post`, `Comment`, and `Vote` tables and the documented cascading relations and indexes.
-- [ ] The database has no email, real name, picture, Google ID, or application-stored IP fields. Anonymous user IDs are 32 lowercase hexadecimal characters.
-- [ ] RLS is enabled on all four tables. Requests through the Supabase Data API using public/anonymous access cannot read rows. The server's Prisma connection still works.
-- [ ] `.env` is ignored by Git and no actual secret has been committed. Review locally without publishing secret-bearing diffs or history.
-- [ ] Google sign-in succeeds for a verified permitted email. An unverified/missing email is rejected. With `ALLOWED_EMAIL_DOMAIN` configured, other domains are rejected.
-- [ ] Google testing-mode accounts are explicitly allowed; the production consent configuration is ready before wider release.
-- [ ] First sign-in goes to `/setup-username`. Reserved names, punctuation, too-short/long names, and case-insensitive duplicates are rejected. A successful choice immediately reaches the feed and cannot be changed through the API.
-- [ ] `/api/auth/session` exposes only `user.id`, `user.username`, and `expires`; no email, name, picture, or Google subject appears. Inspect decrypted session behavior through the endpoint; do not copy session cookies into shared tools.
-- [ ] Logged-out visits to protected pages go to `/login`. Logged-out API calls return JSON `401`. A signed-in account without a username receives API `403` except for username setup.
-- [ ] Account A can create a post, account B can comment and vote, and the changes remain after reload. Boards filter correctly and an unknown board page returns `404`.
-- [ ] In a second browser profile or incognito window, B has no Delete control on A's post. A direct `DELETE /api/posts/<A-post-id>` request from B returns `403` and preserves the post.
-- [ ] Clicking an active vote removes it; choosing the opposite direction switches it. Scores and `myVote` remain correct after reload and when both accounts interact.
-- [ ] A can delete their own post; related comments/votes disappear. Fetching the deleted post returns `404`.
-- [ ] Invalid JSON, invalid boards, empty/oversized content, invalid vote values, missing IDs, and nonexistent posts produce the documented JSON errors without Prisma messages or stack traces.
-- [ ] Page through more than 20 posts. There are no repeated/skipped posts, including posts with the same creation timestamp, and the final page has `nextCursor: null`.
-- [ ] Every post/comment/vote response contains no `userId`, `anonId`, email, profile fields, or author identity except username. The signed-in user's own ID in `/api/auth/session` is the documented exception.
-- [ ] User input containing HTML/script syntax renders as text. Mobile navigation, keyboard focus, form error states, and loading controls remain usable.
-- [ ] Signing out removes access to the feed and private APIs.
+Follow DEPLOYMENT.md for Vercel + Render + Supabase and run the read-only scripts/deployment-smoke.mjs against real HTTPS origins. Local checks do not establish any of the following. Verify against your intended services before launch:
 
-## Deployment checks
+- [ ] Apply Alembic to the reviewed/backed-up PostgreSQL database. Confirm old data, aliases, pepper, and vote enum remain intact.
+- [ ] Verify RLS on all forum/security tables and no public Supabase Data API reads/writes. Verify the restricted server role has the required access.
+- [ ] Keep database credentials only in FastAPI; Google/session/pepper only in Next.js; give both servers the same independent service secret. Keep demo flags disabled.
+- [ ] Test verified @rkgit.edu.in Google Workspace sign-in with matching hd, personal Gmail rejection, old unrestricted session invalidation, first alias, duplicate/reserved alias rejection, logout, and eight-hour session expiry.
+- [ ] Verify session responses contain only the user's own ID, alias, and expiry; public content responses expose no identity fields other than usernames.
+- [ ] Repeat create/comment/vote/toggle/delete across two browser profiles; cross-account deletion must return 403 and leave the post intact.
+- [ ] Unauthenticated direct backend business requests return 401; production docs are unavailable. Cross-site or missing-Origin frontend mutations return 403.
+- [ ] Test production CSP with login, hydration, forms and navigation; inspect actual TLS, secure cookies, HSTS and framing headers at the deployed edge.
+- [ ] Restrict database/backend ingress, require TLS, verify provider certificate/hostname trust, and enforce body/header/read-time and unauthenticated rate limits at the reverse proxy.
+- [ ] Check logging configuration without copying real tokens, cookies, request bodies, profiles, or secrets. Provider IP logging is separate from application storage.
+- [ ] Monitor dependencies, failed requests and aggregate abuse without storing identities/IPs in application logs. Test backup restoration and protect the stable pepper.
+- [ ] Add an appropriate moderation/reporting process before broad campus access.
 
-- [ ] Vercel's production environment has the required variables. The production origin equals `NEXTAUTH_URL`; Google's authorized redirect URI is that exact origin followed by `/api/auth/callback/google`.
-- [ ] The pepper is securely backed up and matches the database's existing user identities. Production secrets and data are excluded from disposable previews.
-- [ ] Repeat the live OAuth, RLS, session privacy, ownership, voting, and logout checks against the production deployment.
-- [ ] Inspect app and provider logging configuration without recording real tokens, sessions, request bodies, profile data, or environment values. Provider infrastructure may still retain IP logs, as described in the README.
-- [ ] Accept the documented v1 limits or add moderation and abuse controls before opening the forum to a broader audience.
+Deployment remains unverified until these checks are actually completed against the intended environment.

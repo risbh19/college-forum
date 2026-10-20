@@ -9,8 +9,9 @@ import { Icon, boardIcons } from "@/components/ui/Icon";
 
 const descriptions: Record<string, string> = { general: "Campus questions, everyday discoveries, and everything in between.", cse: "Talk code, untangle coursework, and find people to build with.", hostel: "Late-night stories, practical advice, and life beyond the classroom.", placements: "Share opportunities, interview experiences, and your next big step.", confessions: "A place to get it off your chest. Be thoughtful, be kind, be yourself." };
 
-export default async function BoardPage({ params }: { params: { name: string } }) {
-  const board = BOARDS.find((item) => item.slug === params.name);
+export default async function BoardPage({ params }: { params: Promise<{ name: string }> }) {
+  const { name } = await params;
+  const board = BOARDS.find((item) => item.slug === name);
   if (!board) notFound();
   const session = await getServerSession(authOptions);
   if (!session?.user.id) redirect("/login");

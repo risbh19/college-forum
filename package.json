@@ -15,31 +15,33 @@
     "test": "tsx --test tests/*.test.ts",
     "test:smoke": "node scripts/smoke.mjs",
     "test:local": "node scripts/local-check.mjs",
-    "postinstall": "prisma generate",
-    "db:push": "prisma db push",
-    "db:generate": "prisma generate"
+    "backend": "node scripts/python.mjs dev",
+    "backend:install": "node scripts/python.mjs install",
+    "test:backend": "node scripts/python.mjs test",
+    "db:upgrade": "node scripts/python.mjs upgrade"
   },
   "dependencies": {
-    "@prisma/client": "6.19.3",
-    "next": "14.2.35",
+    "next": "15.5.28",
     "next-auth": "4.24.15",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "server-only": "0.0.1",
     "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/node": "22.19.11",
-    "@types/react": "18.3.28",
-    "@types/react-dom": "18.3.7",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "autoprefixer": "10.4.24",
     "embedded-postgres": "16.14.0-beta.17",
     "eslint": "8.57.1",
-    "eslint-config-next": "14.2.35",
-    "postcss": "8.5.8",
-    "prisma": "6.19.3",
+    "eslint-config-next": "15.5.28",
+    "postcss": "8.5.31",
     "tailwindcss": "3.4.19",
     "tsx": "4.21.0",
     "typescript": "5.9.3"
+  },
+  "overrides": {
+    "postcss": "8.5.31"
   }
 }

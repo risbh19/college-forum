@@ -3,11 +3,12 @@ export function isLocalDemo(): boolean {
   if (process.env.NODE_ENV !== 'development' || process.env.COLLEGE_FORUM_LOCAL !== '1') return false;
   try {
     const app = new URL(process.env.NEXTAUTH_URL ?? '');
-    const database = new URL(process.env.DATABASE_URL ?? '');
+    const backend = new URL(process.env.BACKEND_URL ?? '');
     const loopback = new Set(['localhost', '127.0.0.1', '[::1]']);
     return app.protocol === 'http:' && loopback.has(app.hostname)
-      && ['postgres:', 'postgresql:'].includes(database.protocol)
-      && loopback.has(database.hostname) && database.pathname === '/college_forum_local';
+      && backend.protocol === 'http:' && loopback.has(backend.hostname)
+      && backend.pathname === '/' && !backend.username && !backend.password && !backend.search && !backend.hash
+      && app.pathname === '/' && !app.username && !app.password && !app.search && !app.hash;
   } catch {
     return false;
   }

@@ -1,0 +1,10 @@
+.git
+.local
+.env
+.env.*
+!.env.example
+backend
+docs
+deploy
+tests
+*.tsbuildinfo
