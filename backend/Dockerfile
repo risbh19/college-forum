@@ -5,6 +5,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && useradd --create-home forum
 COPY app ./app
 COPY migrations ./migrations
+COPY certs ./certs
 COPY alembic.ini .
 USER forum
 EXPOSE 8000

@@ -1,5 +1,8 @@
 from pathlib import Path
 from datetime import datetime
+import hashlib
+import ssl
+import certifi
 
 from alembic import command
 from alembic.config import Config
@@ -47,3 +50,21 @@ def test_production_database_certificate_and_hostname_are_verified():
     assert options['sslmode'] == 'verify-full' and Path(options['sslrootcert']).is_file()
     configured = postgres_connect_args(settings, 'postgresql://test:test@db.example/forum?sslmode=disable&sslrootcert=/cert/provider.pem')
     assert configured['sslmode'] == 'verify-full' and configured['sslrootcert'] == '/cert/provider.pem'
+
+
+def test_supabase_connections_use_the_bundled_public_ca_and_preserve_explicit_overrides():
+    settings = Settings(app_env='production', database_url='postgresql://test:test@db.example/forum', backend_shared_secret='synthetic-migration-service-secret-123456')
+    for hostname in ['aws-0-ap-northeast-1.pooler.supabase.com', 'db.synthetic.supabase.co']:
+        options = postgres_connect_args(settings, f'postgresql://test:test@{hostname}/postgres?sslmode=disable')
+        certificate = Path(options['sslrootcert'])
+        assert certificate.name == 'supabase-ca.crt' and certificate.is_file()
+        assert options['sslmode'] == 'verify-full'
+        content = certificate.read_text(encoding='ascii')
+        assert 'PRIVATE KEY' not in content
+        assert hashlib.sha256(ssl.PEM_cert_to_DER_cert(content)).hexdigest() == '807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa'
+        ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT).load_verify_locations(cadata=content)
+        overridden = postgres_connect_args(settings, f'postgresql://test:test@{hostname}/postgres?sslrootcert=/cert/updated.pem')
+        assert overridden['sslrootcert'] == '/cert/updated.pem' and overridden['sslmode'] == 'verify-full'
+    for hostname in ['db.example', 'notpooler.supabase.com', 'db.synthetic.supabase.co.attacker.invalid', 'aws-0.pooler.supabase.com.attacker.invalid']:
+        assert postgres_connect_args(settings, f'postgresql://test:test@{hostname}/postgres')['sslrootcert'] == certifi.where()
+    assert 'COPY certs ./certs' in (Path(__file__).resolve().parents[1] / 'Dockerfile').read_text()

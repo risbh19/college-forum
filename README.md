@@ -4,6 +4,8 @@ A campus discussion app for **RKGIT**, with a **FastAPI backend**, Next.js front
 
 **Deploy for real users:** follow [Vercel + Render + Supabase setup](docs/DEPLOYMENT.md). Sign-in accepts only verified college-managed **@rkgit.edu.in** accounts; personal Gmail and other domains are rejected.
 
+For manual dashboard setup, use the [Vercel deployment steps and variable mapping](docs/VERCEL_SETUP.md).
+
 ## Run locally
 
 Install **Node.js 20.9+ with npm** and **Python 3.11+** (3.12 recommended).
@@ -110,7 +112,7 @@ Production frontend auth throttling requires Vercel's `VERCEL=1` system variable
 
 Host Next.js on Vercel or a Node host and FastAPI as a separate Python/container service. `backend/Dockerfile` runs as an unprivileged user and disables access logs. Build with `docker build -t college-forum-api backend`. The included Render blueprint runs Alembic as a pre-deploy step. On other hosts, run migrations explicitly with the private environment before starting the backend. Alembic downgrade is intentionally disabled for the adoption migration to protect existing data.
 
-Use `APP_ENV=production`, HTTPS service origins, a stable `NEXTAUTH_SECRET`/`ANON_PEPPER`, and the same service secret on both hosts. Set `NEXTAUTH_URL` and Google's callback to the exact public frontend origin. Do not expose a development server. Restrict backend ingress to the frontend/private network where practical. Configure your reverse proxy to preserve the configured backend Host, enforce body/header/time limits, and trust only the actual proxy address for forwarded headers. Database TLS uses `verify-full` with the bundled public CA store by default. For a provider-specific CA, mount its PEM certificate and set `sslrootcert=/path/provider-ca.pem` in the private database URL. Hostname/certificate verification cannot be disabled in production.
+Use `APP_ENV=production`, HTTPS service origins, a stable `NEXTAUTH_SECRET`/`ANON_PEPPER`, and the same service secret on both hosts. Set `NEXTAUTH_URL` and Google's callback to the exact public frontend origin. Do not expose a development server. Restrict backend ingress to the frontend/private network where practical. Configure your reverse proxy to preserve the configured backend Host, enforce body/header/time limits, and trust only the actual proxy address for forwarded headers. Database TLS uses `verify-full`; Supabase hosts automatically use the bundled public Supabase CA, and other hosts use the public CA store. For another provider-specific CA, mount its PEM certificate and set `sslrootcert=/path/provider-ca.pem` in the private database URL. Hostname/certificate verification cannot be disabled in production.
 
 Google OAuth, hosted PostgreSQL RLS, TLS/proxy configuration, and deployed behavior require verification in your own environment; local tests do not certify them. Use separate data/secrets for previews. See [Verification](docs/VERIFICATION.md).
 

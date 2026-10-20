@@ -2,7 +2,7 @@
 
 Target: **Vercel frontend + Render FastAPI + Supabase PostgreSQL**. Only verified, college-managed **@rkgit.edu.in Google Workspace accounts** can sign in. Personal Gmail, other domains, subdomains and accounts without the matching Google hosted-domain claim are rejected by server code. Changing or omitting `ALLOWED_EMAIL_DOMAIN` cannot open access.
 
-This repository is prepared for deployment; it has not been deployed to your accounts. Real Google sign-in and hosted database access cannot be verified without your private service configuration. Do not paste credentials into chat or commit them.
+For dashboard-by-dashboard instructions, follow [Manual Vercel deployment](VERCEL_SETUP.md). Database migration head `0002_reports`, RLS on all seven forum/security tables, and a read-only Upstash PING were verified during setup. Hosted Render readiness, the Vercel frontend, real Google sign-in and live quotas remain unverified. Do not paste credentials into chat or commit them.
 
 ## 1. Review the source and prepare accounts
 
@@ -22,7 +22,7 @@ In Supabase's **Connect** panel obtain:
 
 IPv4-only hosts can use the session pooler if the direct address is unreachable. No Supabase API/service-role key is needed by this app. Database credentials belong only on Render, never in Vercel or any `NEXT_PUBLIC_` variable.
 
-Production connections enforce `sslmode=verify-full`: both encryption and certificate/hostname verification. If your database needs a project-specific CA, download its server root certificate from Supabase's database settings and add it as a Render secret file, for example `supabase-ca.pem`. Add `sslrootcert=/etc/secrets/supabase-ca.pem` to **both** database URLs. Use `&` if a query already exists. Do not disable verification to fix a certificate error. The default public CA store works when the server chain is publicly trusted.
+Production connections enforce `sslmode=verify-full`: both encryption and certificate/hostname verification. The backend image bundles the public Supabase Root 2021 CA and automatically selects it for Supabase pooler/direct database hosts. No Windows certificate path or secret-file upload is needed for this provider CA. Other providers use the public CA store. If a project needs a different CA, download its root certificate from the provider dashboard, mount it as a Render secret file, and add `sslrootcert=/etc/secrets/supabase-ca.pem` to **both** database URLs. Use `&` if a query already exists. An explicit CA takes precedence; certificate/hostname verification cannot be disabled.
 
 Alembic creates/adopts the original forum tables plus shared rate-limit/replay tables and enables RLS. The server SQL role needs the expected owner/bypass-RLS access. Public Supabase Data API roles must not read/write forum or security records; review existing policies if you reuse a project. Keep that privileged SQL credential on the backend only.
 

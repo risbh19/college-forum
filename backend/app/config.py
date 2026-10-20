@@ -1,4 +1,5 @@
 from urllib.parse import parse_qs, urlsplit
+from pathlib import Path
 import re
 import certifi
 
@@ -60,6 +61,10 @@ def sqlalchemy_url(value: str) -> str:
 def postgres_connect_args(settings, value):
     options = {"prepare_threshold": None, "connect_timeout": 5}
     if settings.app_env == "production":
-        query = parse_qs(urlsplit(value).query)
-        options.update(sslmode="verify-full", sslrootcert=query.get("sslrootcert", [certifi.where()])[0])
+        parsed = urlsplit(value)
+        query = parse_qs(parsed.query)
+        hostname = (parsed.hostname or '').lower()
+        supabase = hostname.endswith('.pooler.supabase.com') or (hostname.startswith('db.') and hostname.endswith('.supabase.co'))
+        default_ca = str(Path(__file__).resolve().parents[1] / 'certs' / 'supabase-ca.crt') if supabase else certifi.where()
+        options.update(sslmode="verify-full", sslrootcert=query.get("sslrootcert", [default_ca])[0])
     return options

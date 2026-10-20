@@ -48,3 +48,7 @@ Follow DEPLOYMENT.md for Vercel + Render + Supabase and run the read-only script
 - [ ] Configure trusted admins, verify report auto-hide/admin actions on staging, and provide a moderation/appeal contact before broad campus access.
 
 Deployment remains unverified until these checks are actually completed against the intended environment.
+
+## Service setup checks completed
+
+The supplied Supabase session-pooler connection was tested with full TLS verification using the public Supabase CA. The database had no existing forum rows before applying `0001_fastapi_baseline` and `0002_reports`. The current head and RLS on User, Post, Comment, Vote, Report, RateBucket and UsedAssertion were verified. Upstash's read-only PING succeeded. No secret values were committed or written to diagnostic output. Render's public readiness and real Google sign-in were not verified; this is not a completed production deployment.
