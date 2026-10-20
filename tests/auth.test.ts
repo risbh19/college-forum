@@ -4,6 +4,7 @@ import type { Profile } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
 import { authOptions } from '../lib/auth'
 import { COLLEGE_AUTH_POLICY } from '../lib/access-policy'
+import { spawnSync } from 'node:child_process'
 
 const jwt = authOptions.callbacks?.jwt
 const session = authOptions.callbacks?.session
@@ -12,6 +13,17 @@ if (!jwt || !session || !signIn) throw new Error('Required privacy callbacks are
 
 const ANON_ID = 'a'.repeat(32)
 const EXPIRES = '2030-01-01T00:00:00.000Z'
+
+test('JWT sessions and cookies have a seven-day lifetime and production always requires secure cookies', () => {
+  assert.equal(authOptions.session?.strategy, 'jwt')
+  assert.equal(authOptions.session?.maxAge, 7 * 24 * 60 * 60)
+  assert.equal(authOptions.jwt?.maxAge, 7 * 24 * 60 * 60)
+  const result = spawnSync(process.execPath, ['--import', 'tsx', '-e', "import('./lib/auth.ts').then(m => process.stdout.write(String((m.authOptions ?? m.default.authOptions).useSecureCookies)))"], {
+    env: { ...process.env, NODE_ENV: 'production', NEXTAUTH_URL: 'http://localhost:3000' }, encoding: 'utf8', windowsHide: true,
+  })
+  assert.equal(result.status, 0)
+  assert.equal(result.stdout, 'true')
+})
 
 async function withEnvironment(name: 'ANON_PEPPER' | 'ALLOWED_EMAIL_DOMAIN', value: string | undefined, run: () => Promise<void>) {
   const previous = process.env[name]

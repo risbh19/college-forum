@@ -1,4 +1,5 @@
 from urllib.parse import parse_qs, urlsplit
+import re
 import certifi
 
 from pydantic import Field, SecretStr, model_validator
@@ -13,10 +14,16 @@ class Settings(BaseSettings):
     backend_shared_secret: SecretStr
     backend_url: str = "http://127.0.0.1:8000"
     college_forum_local: bool = False
-    max_body_bytes: int = 65536
+    max_body_bytes: int = 20 * 1024
+    admin_anon_ids: str = Field(default="", repr=False)
+
+    def is_admin(self, viewer: str) -> bool:
+        return viewer in {value.strip() for value in self.admin_anon_ids.split(",") if value.strip()}
 
     @model_validator(mode="after")
     def validate_security(self):
+        if any(not re.fullmatch(r"[a-f0-9]{32}", value.strip()) for value in self.admin_anon_ids.split(",") if value.strip()):
+            raise ValueError("ADMIN_ANON_IDS must contain comma-separated anonymous IDs")
         if len(self.backend_shared_secret.get_secret_value()) < 32:
             raise ValueError("BACKEND_SHARED_SECRET must contain at least 32 characters")
         database = urlsplit(self.database_url.get_secret_value())

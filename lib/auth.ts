@@ -30,8 +30,9 @@ export const authOptions: NextAuthOptions = {
       checks: ['pkce', 'state', 'nonce'],
     }),
   ],
-  session: { strategy: 'jwt', maxAge: 8 * 60 * 60 },
-  jwt: { maxAge: 8 * 60 * 60 },
+  useSecureCookies: process.env.NODE_ENV === 'production' || process.env.NEXTAUTH_URL?.startsWith('https://'),
+  session: { strategy: 'jwt', maxAge: 7 * 24 * 60 * 60 },
+  jwt: { maxAge: 7 * 24 * 60 * 60 },
   callbacks: {
     async signIn({ profile, account, user }) {
       if (account?.provider === 'local-demo') {

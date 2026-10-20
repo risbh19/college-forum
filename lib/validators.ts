@@ -25,3 +25,9 @@ export const voteSchema = z.object({
   postId: z.string().min(1).max(40),
   type: z.enum(['UP', 'DOWN']),
 });
+
+export const reportSchema = z.object({
+  postId: z.string().min(1).max(40).optional(),
+  commentId: z.string().min(1).max(40).optional(),
+  reason: z.string().trim().min(3).max(500),
+}).strict().refine(value => Boolean(value.postId) !== Boolean(value.commentId), 'Choose one report target');

@@ -4,7 +4,7 @@ The user requested a FastAPI backend and stronger security after the initial Nex
 
 ## Boundaries
 
-- Next.js handles Google OAuth via NextAuth 4, encrypted eight-hour browser sessions, the email HMAC, server-rendered pages, and a same-origin gateway.
+- Next.js handles Google OAuth via NextAuth 4, encrypted seven-day browser sessions, the email HMAC, server-rendered pages, and a same-origin gateway.
 - FastAPI owns all business endpoints and PostgreSQL access via SQLAlchemy. It independently validates signed assertions, membership, input, ownership, and response schemas.
 - Browser mutations go through `/api/[...path]`. The gateway rejects missing/cross-site origins, caps body size/read time, and signs a 20-second assertion. No service token or database credential is shipped to the client.
 - `/internal/session` accepts only identity-scoped assertions and returns `{username}`. It never receives a Google profile.
@@ -13,6 +13,8 @@ The user requested a FastAPI backend and stronger security after the initial Nex
 ## Persistence and migration
 
 `0001_fastapi_baseline` uses schema adoption for the original four forum tables and creates `RateBucket` and `UsedAssertion`. It enables PostgreSQL RLS on all six tables. The migration is idempotent through Alembic's revision state and `create_all(checkfirst=True)`. It does not copy or drop original records. The baseline cannot be downgraded destructively; restore a reviewed backup if rollback is necessary.
+
+`0002_reports` adds default-false visibility columns and a private Report table with cascading foreign keys, an exactly-one-target check, and per-target/reporter uniqueness. Existing posts/comments remain visible. RLS is enabled on Report; `/ready` requires this revision. Repeated `upgrade head` preserves records. Restore a reviewed backup for rollback.
 
 Alembic revisions must be treated as historical schema definitions after release. Future schema changes need new explicit migrations, not edits to this revision or reliance on the current model metadata.
 

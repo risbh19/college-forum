@@ -12,7 +12,8 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .config import Settings, postgres_connect_args, sqlalchemy_url
-from .models import Comment, Post, RateBucket, UsedAssertion, User, Vote, VoteType
+from .models import Comment, Post, RateBucket, Report, UsedAssertion, User, Vote, VoteType
+from .moderation import moderation_router
 from .schemas import Board, CommentInput, CommentView, CommentsPage, PostInput, PostsPage, PostView, UsernameInput, VoteInput, VoteState
 from .security import RequestLimits, principal
 
@@ -36,7 +37,7 @@ def vote_states(db, ids, viewer):
 def post_views(db, posts, viewer):
     ids = [post.id for post in posts]
     states = vote_states(db, ids, viewer)
-    counts = dict(db.execute(select(Comment.post_id, func.count()).where(Comment.post_id.in_(ids)).group_by(Comment.post_id)).all()) if ids else {}
+    counts = dict(db.execute(select(Comment.post_id, func.count()).where(Comment.post_id.in_(ids), Comment.hidden.is_(False)).group_by(Comment.post_id)).all()) if ids else {}
     names = dict(db.execute(select(User.id, User.username).where(User.id.in_({post.user_id for post in posts}))).all()) if posts else {}
     return [{"id": post.id, "title": post.title, "body": post.body, "board": post.board,
              "createdAt": serialize_date(post.created_at), "author": {"username": names[post.user_id]},
@@ -82,7 +83,7 @@ def create_app(settings: Settings | None = None, engine=None):
     @app.exception_handler(RequestValidationError)
     async def validation_error(request, error):
         # Never echo Pydantic's input field or the raw request body.
-        return JSONResponse({"error": error.errors()[0].get("msg", "Invalid input")}, status_code=400)
+        return JSONResponse({"error": "Invalid input"}, status_code=400)
 
     @app.exception_handler(SQLAlchemyError)
     async def database_error(request, error):
@@ -111,9 +112,9 @@ def create_app(settings: Settings | None = None, engine=None):
         if engine.dialect.name == 'postgresql':
             db.execute(text("SET LOCAL statement_timeout = '3000ms'"))
         revision = db.execute(text('SELECT version_num FROM alembic_version')).scalar_one_or_none()
-        if revision != '0001_fastapi_baseline':
+        if revision != '0002_reports':
             raise HTTPException(503, 'Service temporarily unavailable')
-        for model in (User, Post, Comment, Vote, RateBucket, UsedAssertion):
+        for model in (User, Post, Comment, Vote, Report, RateBucket, UsedAssertion):
             db.execute(select(model).limit(0))
         return {'status': 'ready'}
 
@@ -135,12 +136,12 @@ def create_app(settings: Settings | None = None, engine=None):
     @app.get("/api/posts", response_model=PostsPage)
     def posts(board: Board | None = None, cursor: str | None = Query(None, min_length=1, max_length=40),
               viewer: str = Depends(member), db: Session = Depends(database, scope="function")):
-        query = select(Post)
+        query = select(Post).where(Post.hidden.is_(False))
         if board:
             query = query.where(Post.board == board)
         if cursor:
             anchor = db.get(Post, cursor)
-            if not anchor or (board and anchor.board != board):
+            if not anchor or anchor.hidden or (board and anchor.board != board):
                 raise HTTPException(400, "This page link has expired. Refresh the feed and try again.")
             query = query.where(or_(Post.created_at < anchor.created_at, and_(Post.created_at == anchor.created_at, Post.id < anchor.id)))
         rows = db.scalars(query.order_by(Post.created_at.desc(), Post.id.desc()).limit(21)).all()
@@ -156,7 +157,7 @@ def create_app(settings: Settings | None = None, engine=None):
     @app.get("/api/posts/{post_id}", response_model=PostView)
     def get_post(post_id: str, viewer: str = Depends(member), db: Session = Depends(database, scope="function")):
         row = db.get(Post, post_id)
-        if row is None:
+        if row is None or row.hidden:
             raise HTTPException(404, "Post not found")
         return post_views(db, [row], viewer)[0]
 
@@ -173,13 +174,15 @@ def create_app(settings: Settings | None = None, engine=None):
 
     @app.get("/api/comments", response_model=CommentsPage)
     def comments(postId: str = Query(..., min_length=1, max_length=40), viewer: str = Depends(member), db: Session = Depends(database, scope="function")):
+        if db.scalar(select(Post.id).where(Post.id == postId, Post.hidden.is_(False))) is None:
+            raise HTTPException(404, "Post not found")
         rows = db.execute(select(Comment, User.username).join(User, User.id == Comment.user_id)
-                          .where(Comment.post_id == postId).order_by(Comment.created_at, Comment.id)).all()
+                          .where(Comment.post_id == postId, Comment.hidden.is_(False)).order_by(Comment.created_at, Comment.id)).all()
         return {"comments": [comment_view(row, name, viewer) for row, name in rows]}
 
     @app.post("/api/comments", response_model=CommentView, status_code=201)
     def create_comment(body: CommentInput, viewer: str = Depends(member), db: Session = Depends(database, scope="function")):
-        if db.scalar(select(Post.id).where(Post.id == body.postId).with_for_update()) is None:
+        if db.scalar(select(Post.id).where(Post.id == body.postId, Post.hidden.is_(False)).with_for_update()) is None:
             raise HTTPException(404, "Post not found")
         row = Comment(id="c" + token_hex(12), body=body.body, post_id=body.postId, user_id=viewer)
         db.add(row)
@@ -189,7 +192,7 @@ def create_app(settings: Settings | None = None, engine=None):
     @app.post("/api/votes", response_model=VoteState)
     def vote(body: VoteInput, viewer: str = Depends(member), db: Session = Depends(database, scope="function")):
         # Lock the parent row, including when the user's vote doesn't exist yet.
-        if db.scalar(select(Post.id).where(Post.id == body.postId).with_for_update()) is None:
+        if db.scalar(select(Post.id).where(Post.id == body.postId, Post.hidden.is_(False)).with_for_update()) is None:
             raise HTTPException(404, "Post not found")
         row = db.get(Vote, (viewer, body.postId))
         value = VoteType(body.type)
@@ -202,4 +205,5 @@ def create_app(settings: Settings | None = None, engine=None):
         db.flush()
         return vote_states(db, [body.postId], viewer)[body.postId]
 
+    app.include_router(moderation_router(settings, member, database))
     return app

@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { BOARD_SLUGS } from '../lib/boards'
-import { commentSchema, postSchema, RESERVED_USERNAMES, usernameSchema, voteSchema } from '../lib/validators'
+import { commentSchema, postSchema, reportSchema, RESERVED_USERNAMES, usernameSchema, voteSchema } from '../lib/validators'
+
+test('reports require exactly one target, a bounded reason and no supplied identity', () => {
+  assert.equal(reportSchema.safeParse({ postId: 'post', reason: 'Spam content' }).success, true)
+  assert.equal(reportSchema.safeParse({ commentId: 'comment', reason: 'Harassment' }).success, true)
+  for (const value of [{ reason: 'Spam' }, { postId: 'post', commentId: 'comment', reason: 'Spam' },
+    { postId: 'post', reason: ' ' }, { postId: 'post', reason: 'x'.repeat(501) }, { postId: 'post', reason: 'Spam', reporterId: 'fake' }]) {
+    assert.equal(reportSchema.safeParse(value).success, false)
+  }
+})
 
 test('usernames accept both length boundaries and the documented alphabet', () => {
   for (const username of ['Ab_', 'student_2026', 'a'.repeat(20)]) {

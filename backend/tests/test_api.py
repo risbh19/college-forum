@@ -24,7 +24,7 @@ def client():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool, hide_parameters=True)
     event.listen(engine, "connect", lambda connection, _: connection.execute("PRAGMA foreign_keys=ON"))
     Base.metadata.create_all(engine)
-    settings = Settings(app_env="test", database_url="sqlite://", backend_shared_secret=KEY)
+    settings = Settings(app_env="test", database_url="sqlite://", backend_shared_secret=KEY, admin_anon_ids=ONE)
     with Session(engine) as db, db.begin():
         db.add_all([User(id=ONE, username="shadowcoder42", username_lower="shadowcoder42"), User(id=TWO, username="campusowl", username_lower="campusowl")])
     with TestClient(create_app(settings, engine), raise_server_exceptions=False) as browser:
@@ -44,7 +44,7 @@ def assertion(viewer, request_method, request_path, body="", **overrides):
 def call(client, method, path, data=None, viewer=ONE, token=None, raw=None):
     body = raw if raw is not None else json.dumps(data, separators=(",", ":")) if data is not None else ""
     headers = {"authorization": "Bearer " + (token or assertion(viewer, method, path.split("?")[0], body))}
-    if method == "POST":
+    if method in {"POST", "PATCH"}:
         headers["content-type"] = "application/json"
     return client[0].request(method, path, content=body, headers=headers)
 
@@ -57,7 +57,7 @@ def new_post(client):
 
 def assert_private(value):
     if isinstance(value, dict):
-        assert not set(value) & {"userId", "anonId", "email", "name", "picture", "image", "sub"}
+        assert not set(value) & {"userId", "reporterId", "anonId", "email", "name", "picture", "image", "sub"}
         for nested in value.values():
             assert_private(nested)
     elif isinstance(value, list):
@@ -77,7 +77,7 @@ def test_readiness_requires_migrated_database_and_expected_schema(client):
     assert client[0].get('/ready').status_code == 503
     with client[1].begin() as db:
         db.execute(text('CREATE TABLE alembic_version (version_num VARCHAR(32) PRIMARY KEY)'))
-        db.execute(text("INSERT INTO alembic_version VALUES ('0001_fastapi_baseline')"))
+        db.execute(text("INSERT INTO alembic_version VALUES ('0002_reports')"))
     assert client[0].get('/ready').json() == {'status': 'ready'}
     with client[1].begin() as db:
         db.execute(text("UPDATE alembic_version SET version_num = 'old-revision'"))
@@ -182,6 +182,22 @@ def test_strict_payload_validation(client, data):
     assert call(client, "POST", "/api/posts", data).status_code == 400
 
 
+@pytest.mark.parametrize("field", ["userId", "anonId", "reporterId", "isAdmin"])
+def test_client_identity_and_privileges_cannot_override_signed_viewer(client, field):
+    post_id = new_post(client)
+    for path, data, viewer in [
+        ("/api/comments", {"postId": post_id, "body": "Test comment"}, TWO),
+        ("/api/votes", {"postId": post_id, "type": "UP"}, TWO),
+        ("/api/username", {"username": "new_alias"}, NEW),
+    ]:
+        response = call(client, "POST", path, {**data, field: ONE}, viewer=viewer)
+        assert response.status_code == 400
+        assert_private(response.json())
+    response = call(client, "DELETE", f"/api/posts/{post_id}?userId={ONE}", viewer=TWO)
+    assert response.status_code == 403
+    assert call(client, "GET", f"/api/posts/{post_id}").status_code == 200
+
+
 def test_bounded_requests_and_safe_errors(client):
     assert call(client, "POST", "/api/posts", raw="{" ).status_code == 400
     assert call(client, "POST", "/api/posts", raw="x" * 65537).status_code == 413
@@ -191,6 +207,8 @@ def test_bounded_requests_and_safe_errors(client):
     assert call(client, "GET", "/api/posts?cursor=" + "a" * 3000).status_code == 414
     assert call(client, "GET", "/api/posts?board=invalid").status_code == 400
     assert "input" not in call(client, "POST", "/api/posts", raw="{" ).json()
+    assert call(client, "POST", "/api/posts", raw="x" * 20481).status_code == 413
+    assert call(client, "PATCH", "/api/admin/posts/missing", raw="x" * 20481).status_code == 413
 
 
 def test_pagination_and_expired_cursor(client):

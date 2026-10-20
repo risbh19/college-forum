@@ -93,8 +93,8 @@ async def principal(request: Request) -> str:
 def consume_budget(engine, settings, claims, method, path):
     key = settings.backend_shared_secret.get_secret_value().encode()
     now = int(time.time())
-    operation = path if path in {"/api/posts", "/api/comments", "/api/votes", "/api/username"} else "/read"
-    limit = {"/api/posts": 10, "/api/comments": 30, "/api/votes": 120, "/api/username": 5}.get(operation, 240) if method != "GET" else 240
+    operation = path if path in {"/api/posts", "/api/comments", "/api/votes", "/api/username", "/api/reports"} else "/read"
+    limit = {"/api/posts": 10, "/api/comments": 30, "/api/votes": 120, "/api/username": 5, "/api/reports": 10}.get(operation, 240) if method != "GET" else 240
     if settings.college_forum_local:
         limit *= 10
     bucket_key = hmac.new(key, f"rate:{claims['sub']}:{method}:{operation}".encode(), hashlib.sha256).hexdigest()

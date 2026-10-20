@@ -24,7 +24,11 @@ npm run test:smoke
 
 For an alternate printed port use `node scripts/local-check.mjs http://localhost:3001`. The local runner only accepts loopback targets. It checks sessions, onboarding, account ownership, strict errors, votes (including concurrent changes), comments, public response privacy, pagination/cursors, and cascading deletion. It removes its temporary posts and may initialize the third demo account as `localtester`.
 
-Backend tests cover unsigned/forged/expired/wrong-scope assertions, algorithm allowlisting, request binding, mutation replay, strict validation, ownership, votes, cascade behavior, pagination, shared database rate limits, bounds, generic errors, trusted hosts, production docs, and fail-closed configuration. Frontend tests cover HMAC compatibility, auth privacy, middleware controls, local boundaries, assertion signing, same-origin enforcement, bounded bodies, and deadlines.
+Backend tests cover unsigned/forged/expired/wrong-scope assertions, algorithm allowlisting, request binding, mutation replay, strict validation, ownership, votes, cascade behavior, pagination, shared database rate limits, bounds, generic errors, trusted hosts, production docs, and fail-closed configuration. Frontend tests also cover actual Upstash SDK wiring against mocked Redis REST decisions, quota boundaries/reset, identity/bucket isolation, canonical trusted IPs, 429/Retry-After, middleware short-circuiting, disabled telemetry, no private logging and generic 503 failures. Live Redis behavior must still be checked on staging with private credentials.
+
+Security regression coverage includes all mutation Origin guards, exact auth exemptions, 20 KiB actual-byte/Unicode/chunked body limits, seven-day JWT/session configuration, production secure-cookie configuration, fallback and nonce-based headers, sanitized backend errors, distinct-report thresholds and database uniqueness/one-target constraints, hidden-content access, admin authorization, private response DTOs, cascading reports, and a data-preserving migration from the original schema. See [security review](SECURITY_REVIEW.md).
+
+The production build was served on loopback with synthetic configuration. Login rendered with the Google control enabled; browser checks found no CSP/hydration errors. Actual HTTP checks confirmed security headers, matching HTML/CSP script nonces, script asset loading, and POST/DELETE/PATCH cross-origin 403 responses. This does not verify a real Google sign-in or live Redis.
 
 ## Checks for a real deployment
 
@@ -33,7 +37,7 @@ Follow DEPLOYMENT.md for Vercel + Render + Supabase and run the read-only script
 - [ ] Apply Alembic to the reviewed/backed-up PostgreSQL database. Confirm old data, aliases, pepper, and vote enum remain intact.
 - [ ] Verify RLS on all forum/security tables and no public Supabase Data API reads/writes. Verify the restricted server role has the required access.
 - [ ] Keep database credentials only in FastAPI; Google/session/pepper only in Next.js; give both servers the same independent service secret. Keep demo flags disabled.
-- [ ] Test verified @rkgit.edu.in Google Workspace sign-in with matching hd, personal Gmail rejection, old unrestricted session invalidation, first alias, duplicate/reserved alias rejection, logout, and eight-hour session expiry.
+- [ ] Test verified @rkgit.edu.in Google Workspace sign-in with matching hd, personal Gmail rejection, old unrestricted session invalidation, first alias, duplicate/reserved alias rejection, logout, and seven-day session expiry.
 - [ ] Verify session responses contain only the user's own ID, alias, and expiry; public content responses expose no identity fields other than usernames.
 - [ ] Repeat create/comment/vote/toggle/delete across two browser profiles; cross-account deletion must return 403 and leave the post intact.
 - [ ] Unauthenticated direct backend business requests return 401; production docs are unavailable. Cross-site or missing-Origin frontend mutations return 403.
@@ -41,6 +45,6 @@ Follow DEPLOYMENT.md for Vercel + Render + Supabase and run the read-only script
 - [ ] Restrict database/backend ingress, require TLS, verify provider certificate/hostname trust, and enforce body/header/read-time and unauthenticated rate limits at the reverse proxy.
 - [ ] Check logging configuration without copying real tokens, cookies, request bodies, profiles, or secrets. Provider IP logging is separate from application storage.
 - [ ] Monitor dependencies, failed requests and aggregate abuse without storing identities/IPs in application logs. Test backup restoration and protect the stable pepper.
-- [ ] Add an appropriate moderation/reporting process before broad campus access.
+- [ ] Configure trusted admins, verify report auto-hide/admin actions on staging, and provide a moderation/appeal contact before broad campus access.
 
 Deployment remains unverified until these checks are actually completed against the intended environment.

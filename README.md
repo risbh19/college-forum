@@ -39,20 +39,24 @@ Browser -> Next.js pages / same-origin API gateway -> FastAPI -> PostgreSQL
 | Database | PostgreSQL, Alembic migrations; Supabase supported |
 | Local runtime | Portable PostgreSQL, Python virtual environment, synthetic demo accounts |
 
-FastAPI owns usernames, feeds, posts, comments, votes, ownership, validation, rate limits, and database queries. Next.js handles pages and Google sessions, then forwards authenticated requests. It has no database client. The retained `prisma/` schema is a historical compatibility reference, not the runtime data layer.
+FastAPI owns usernames, feeds, posts, comments, votes, ownership, validation, database access and backend abuse checks. Next.js handles pages, Google sessions and distributed Upstash limits, then forwards authenticated requests. It has no PostgreSQL client. The retained `prisma/` schema is a historical compatibility reference, not the runtime data layer.
 
 ## Security controls
 
 - Every business API call requires an HS256 service assertion valid for 20 seconds, bound to the anonymous account, HTTP method, path, and exact body hash. Issuer, audience, algorithm, scope, and claim allowlist are checked. Mutation assertions are single-use with database replay protection.
 - Mutations through the frontend require the configured same-origin `Origin`; cross-site requests are rejected. Browser session cookies remain HttpOnly and same-site. Service assertions never enter browser storage.
 - FastAPI checks account membership and ownership independently. Author IDs come from signed assertions, never request JSON. Public response schemas expose usernames and ownership flags only.
-- Strict schemas reject unknown fields, invalid types, reserved usernames, and invalid boards. Request bodies are capped at 64 KiB with a total read deadline; queries are bounded. User text is rendered as text.
-- Database-backed per-account limits apply across backend instances: posts 10/minute, comments 30, votes 120, username attempts 5, reads 240. Explicit local mode multiplies limits by 10. Limits use HMAC keys and store no IP addresses.
+- Strict schemas reject unknown fields, invalid types, reserved usernames, and invalid boards. JSON request bodies are capped at **20 KiB of actual bytes**, including chunked bodies, with a total read deadline; queries are bounded. User text is rendered as text.
+- Session and JWT lifetimes are seven days. Production always uses secure cookies. All POST/DELETE/PATCH API routes except the exact NextAuth subtree require an Origin matching `NEXTAUTH_URL` in middleware, with a second gateway check.
+- Members can report another member's post or comment. A database uniqueness constraint counts each reporter once per target; three distinct reports hide the content across public reads and writes. Report records stay private. FastAPI also limits report submissions to 10/minute per account.
+- Admins configured in backend-only `ADMIN_ANON_IDS` can hide/delete posts and comments, including through `/admin`. Empty configuration grants nobody access. Every admin request checks the signed account server-side; public responses never include author/reporter IDs.
+- Upstash Redis sliding-window limits apply across frontend instances per anonymous account: **posts 5/hour, comments 20/hour, votes 60/minute, username attempts 5/hour**. All `/api/auth` methods/subroutes share **20 requests/minute per IP**. The frontend trusts only Vercel's overwritten client-IP header. IPv4/IPv6 forms are normalized; Redis receives HMAC identifiers, never raw IPs or anonymous IDs. Analytics and SDK telemetry are disabled. Rejections return JSON 429 with `Retry-After` seconds. Redis/configuration failures return generic 503 instead of bypassing enforcement.
+- The explicit loopback development demo bypasses Upstash to remain usable without external accounts. Production cannot enable this exception. Existing backend database counters and mutation replay checks remain as additional protection; they do not replace the Upstash gateway quotas.
 - Nonce-based CSP, framing prevention, no-store responses, content-type protection, restrictive permissions, and production HSTS are applied by middleware.
 - Production PostgreSQL connections require TLS with certificate and hostname verification (`verify-full`). Backend connections require HTTPS except loopback. Production API docs are disabled. SQL parameters and access request logs are disabled in the provided backend command.
 - Local login requires development mode, an explicit local flag, loopback services, and a dedicated local database. Production builds cannot enable the demo provider.
 
-These controls do not make the app invulnerable. Infrastructure still needs TLS termination, restricted database/service access, a request-size/rate-limiting edge proxy, monitoring, backups, and ongoing dependency updates. Service-key compromise allows impersonation; protect it on both servers. Per-account limits do not replace edge protection against unauthenticated floods or coordinated abuse. Moderation/reporting tools are outside this version.
+These controls do not make the app invulnerable. Infrastructure still needs TLS termination, restricted database/service access, a request-size/rate-limiting edge proxy, monitoring, backups, and ongoing dependency updates. Service-key compromise allows impersonation; protect it on both servers. Per-account limits do not replace edge protection against unauthenticated floods or coordinated abuse. Administrators must review reports and provide an abuse contact.
 
 ## Commands
 
@@ -91,12 +95,16 @@ The demo does not need this setup. For real accounts:
 | `ALLOWED_EMAIL_DOMAIN` | Next.js | `rkgit.edu.in`; code enforces the college even if this is unset or changed |
 | `BACKEND_SHARED_SECRET` | Both | Independent service authentication secret; at least 32 characters |
 | `BACKEND_URL` | Both | Exact backend origin; HTTPS except loopback |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Next.js only | Private Upstash Redis REST credentials for shared account/auth limits |
 | `DATABASE_URL` | FastAPI | PostgreSQL runtime connection |
 | `DIRECT_URL` | Migration only | Direct/session PostgreSQL connection |
 | `APP_ENV` | FastAPI | `production` or `development`; defaults to production |
+| `ADMIN_ANON_IDS` | FastAPI only | Comma-separated anonymous moderator account IDs; empty grants no admin access |
 | `COLLEGE_FORUM_LOCAL` | Both | Keep `0` for real Google deployments |
 
 On separate hosts, give each service only its listed variables. Local `.env` is a development convenience. The provided launcher passes no database credentials to Next.js and no Google credentials to FastAPI.
+
+Production frontend auth throttling requires Vercel's `VERCEL=1` system variable and trusted `x-vercel-forwarded-for` header. A self-hosted frontend needs a reviewed trusted-proxy integration; arbitrary `x-forwarded-for`/`x-real-ip` input is not accepted. Do not share the production Redis database/secrets with previews. Campus users behind the same public IP share the 20/minute auth quota.
 
 ## Deploy
 
@@ -129,4 +137,4 @@ prisma/               Original schema/RLS reference (historical)
 docs/                 Product spec, deployment, migration notes and verification
 ```
 
-The [product specification](docs/SPEC.md) describes the forum requirements. Current architecture is documented here and in [migration notes](docs/FASTAPI_MIGRATION.md); production setup is in the [deployment guide](docs/DEPLOYMENT.md). Editing, image uploads, nested replies, notifications, moderation UI, username changes, and account-deletion UI remain outside this version.
+The [product specification](docs/SPEC.md) describes the forum requirements. Current architecture is documented here and in [migration notes](docs/FASTAPI_MIGRATION.md); production setup is in the [deployment guide](docs/DEPLOYMENT.md). See the [security review and regression coverage](docs/SECURITY_REVIEW.md). Editing, image uploads, nested replies, notifications, username changes, and account-deletion UI remain outside this version.

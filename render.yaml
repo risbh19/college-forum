@@ -23,3 +23,5 @@ services:
         sync: false
       - key: DIRECT_URL
         sync: false
+      - key: ADMIN_ANON_IDS
+        sync: false

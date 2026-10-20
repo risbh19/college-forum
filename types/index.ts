@@ -24,3 +24,4 @@ export type CommentView = {
 
 export type PostsPage = { posts: PostSummary[]; nextCursor: string | null };
 export type PaginatedPosts = PostsPage;
+export type ModerationItem = { id: string; kind: 'posts' | 'comments'; title: string | null; body: string; hidden: boolean; reportCount: number; reasons: string[] };

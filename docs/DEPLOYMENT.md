@@ -26,6 +26,10 @@ Production connections enforce `sslmode=verify-full`: both encryption and certif
 
 Alembic creates/adopts the original forum tables plus shared rate-limit/replay tables and enables RLS. The server SQL role needs the expected owner/bypass-RLS access. Public Supabase Data API roles must not read/write forum or security records; review existing policies if you reuse a project. Keep that privileged SQL credential on the backend only.
 
+The current head is `0002_reports`: it preserves existing records, adds default-visible `hidden` columns to posts/comments, creates private reports with one-target/unique-reporter constraints, and enables RLS on Report. Deploy the backend migration before the new frontend. Readiness rejects the old revision. Do not run this migration against an unreviewed target.
+
+Set backend-only `ADMIN_ANON_IDS` to a comma-separated list of existing 32-character anonymous IDs for trusted moderators. An operator may obtain their **own** ID from their authenticated session; do not publish IDs or place them in `NEXT_PUBLIC_` variables. Do not change the identity pepper. Empty disables admin actions. Restart/redeploy the backend after changes. `/admin` shows the latest 100 reported targets; admins can hide/delete any post/comment on its detail page. Reports auto-hide at three distinct accounts, but require human review and an abuse contact. There is no unhide or appeal workflow in this release.
+
 ## 3. Create the Render backend
 
 1. In Render, create a **Blueprint** from the reviewed GitHub repository using root `render.yaml`. Alternatively create a Docker Web Service manually with the settings below.
@@ -67,7 +71,7 @@ No Google email/profile/hosted-domain claim is stored in the forum database or r
 
 1. Import the same reviewed GitHub repository. Set **root directory to the repository root**, framework **Next.js**, and Node **22.x** (or another supported version >=20.9). Use the production branch containing these changes.
 2. `vercel.json` supplies `npm ci` and `node scripts/check-production.mjs && npm run build`. The preflight rejects missing/short/reused secrets, non-HTTPS origins, demo flags and misleading domain overrides without printing values.
-3. Add the variables from [frontend.env.example](../deploy/frontend.env.example) to the **Production** environment privately:
+3. Create an Upstash Redis database, copy its REST URL/token privately, and add the variables from [frontend.env.example](../deploy/frontend.env.example) to Vercel's **Production** environment:
 
    | Variable | Value |
    | --- | --- |
@@ -77,12 +81,15 @@ No Google email/profile/hosted-domain claim is stored in the forum database or r
    | `ANON_PEPPER` | Independent random identity key, at least 32 characters; preserve forever for this database |
    | `BACKEND_SHARED_SECRET` | Exact service secret set on Render |
    | `BACKEND_URL` | Exact Render backend HTTPS origin |
+   | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Private Redis REST credentials, on Vercel only |
    | `COLLEGE_FORUM_LOCAL` | `0` |
    | `ALLOWED_EMAIL_DOMAIN` | `rkgit.edu.in` (code also enforces this fixed policy) |
 
 4. Redeploy after configuring variables; an initial unconfigured build intentionally fails preflight. Do not set database credentials or `DIRECT_URL` on Vercel. Never prefix secrets with `NEXT_PUBLIC_`.
 5. Student-facing production login and `/privacy` must be publicly reachable. If Vercel Deployment Protection blocks visitors before Google login, configure the intended production access in your project settings. Protected forum pages themselves still require college sign-in.
 6. Give previews a separate backend/database/secrets/Google client. An unconfigured preview intentionally fails preflight; do not copy production credentials into disposable previews.
+
+Keep Vercel's automatic system-environment exposure enabled so `VERCEL=1` is available. Auth throttling trusts only `x-vercel-forwarded-for`; self-hosted frontends require a reviewed proxy integration. Never copy the Redis token to Render or a `NEXT_PUBLIC_` variable. Previews must use separate Redis state/secrets. Quotas are posts 5/hour, comments 20/hour, votes 60/minute and username attempts 5/hour per anonymous account; all auth requests share 20/minute per normalized IP. Shared campus NAT users share that auth quota. Redis stores only HMAC keys; SDK analytics/telemetry are disabled. A Redis outage or missing configuration blocks protected requests with generic 503; limits return JSON 429 and `Retry-After` seconds. The explicitly enabled loopback local demo remains offline and bypasses Upstash.
 
 Generate the three random keys privately with your password manager or a local cryptographic generator. Keep the identity pepper backed up; changing it breaks account continuity. If an old unrestricted frontend used the same backend service secret, rotate only that service secret on both new production services; do not rotate the identity pepper for an existing real-user database.
 
@@ -102,8 +109,9 @@ Then use two real college accounts:
 - B cannot delete A's post. A can delete it and related comments/votes disappear.
 - Personal Gmail and another-domain Google accounts are denied even if manually selected on Google's account picker. College subdomains and non-Workspace accounts are denied too.
 - Sign out, reload and confirm private pages/APIs are inaccessible. Old pre-policy cookies do not grant access. Production never shows shared demo accounts.
+- On a disposable staging environment, verify rate-limit boundaries/reset and JSON 429/Retry-After; confirm neither raw IPs nor tokens are logged or written to Redis keys. Verify a Redis failure returns generic 503. Unit tests use the real SDKs with mocked REST responses, not a live Redis account.
 - Verify public content responses show aliases only; the current user's own anonymous ID is the documented session exception. Never copy real cookies/tokens into shared tools.
-- Confirm RLS denies public Data API reads/writes, backups are configured, and the college administrator has an abuse/moderation contact process. No moderation dashboard or account-deletion UI is included.
+- Confirm RLS denies public Data API reads/writes, including Report, and backups are configured. Verify three distinct college accounts hide a test item, repeated reports do not count twice, normal members cannot use admin endpoints, and the configured admin can review/hide/delete without exposing identities. Provide an abuse/moderation contact process. No account-deletion UI is included.
 
 Only after those checks should you share the production frontend URL with students. Keep the backend service key and database credentials private. App rate limits do not replace edge protection or an operational moderation process.
 

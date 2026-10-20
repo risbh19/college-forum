@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from enum import Enum as PythonEnum
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, String, UniqueConstraint, false
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -32,6 +32,7 @@ class Post(Base):
     title: Mapped[str] = mapped_column(String)
     body: Mapped[str] = mapped_column(String)
     board: Mapped[str] = mapped_column(String)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     user_id: Mapped[str] = mapped_column("userId", ForeignKey("User.id", ondelete="CASCADE"))
     created_at: Mapped[datetime] = mapped_column("createdAt", DateTime, default=utcnow)
     __table_args__ = (Index("Post_board_createdAt_idx", "board", "createdAt"), Index("Post_createdAt_idx", "createdAt"))
@@ -41,6 +42,7 @@ class Comment(Base):
     __tablename__ = "Comment"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     body: Mapped[str] = mapped_column(String)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     post_id: Mapped[str] = mapped_column("postId", ForeignKey("Post.id", ondelete="CASCADE"))
     user_id: Mapped[str] = mapped_column("userId", ForeignKey("User.id", ondelete="CASCADE"))
     created_at: Mapped[datetime] = mapped_column("createdAt", DateTime, default=utcnow)
@@ -53,6 +55,22 @@ class Vote(Base):
     post_id: Mapped[str] = mapped_column("postId", ForeignKey("Post.id", ondelete="CASCADE"), primary_key=True)
     type: Mapped[VoteType] = mapped_column(Enum(VoteType, name="VoteType"))
     __table_args__ = (Index("Vote_postId_idx", "postId"),)
+
+
+class Report(Base):
+    __tablename__ = "Report"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    post_id: Mapped[str | None] = mapped_column("postId", ForeignKey("Post.id", ondelete="CASCADE"), nullable=True)
+    comment_id: Mapped[str | None] = mapped_column("commentId", ForeignKey("Comment.id", ondelete="CASCADE"), nullable=True)
+    reporter_id: Mapped[str] = mapped_column("reporterId", ForeignKey("User.id", ondelete="CASCADE"))
+    reason: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column("createdAt", DateTime, default=utcnow)
+    __table_args__ = (
+        CheckConstraint('("postId" IS NOT NULL AND "commentId" IS NULL) OR ("postId" IS NULL AND "commentId" IS NOT NULL)', name="Report_one_target"),
+        UniqueConstraint("postId", "reporterId", name="Report_post_reporter_key"),
+        UniqueConstraint("commentId", "reporterId", name="Report_comment_reporter_key"),
+        Index("Report_createdAt_idx", "createdAt"),
+    )
 
 
 class RateBucket(Base):

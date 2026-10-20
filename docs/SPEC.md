@@ -18,7 +18,8 @@ A Reddit-style forum for one college where people can post and comment **anonymo
 | Boards | Fixed list in `lib/boards.ts`: general, cse, hostel, placements, confessions. |
 | Votes | One vote per user per post: UP or DOWN. Clicking the same vote again removes it. |
 | Deleting | Authors can delete their own posts (comments/votes cascade). No editing in v1. |
-| Out of scope (v1) | Moderation tools, image uploads, comment voting, nested replies, notifications, username change, account deletion UI. |
+| Moderation | Members report posts/comments; three distinct reporters auto-hide the target. Backend `ADMIN_ANON_IDS` controls admin-only hide/delete and `/admin` review. |
+| Out of scope (v1) | Image uploads, comment voting, nested replies, notifications, username change, account deletion UI. |
 
 ### Local app boundary
 
@@ -28,11 +29,14 @@ The local credentials provider exists only when `NODE_ENV=development`, `COLLEGE
 
 ```
 User     id (anonId, PK) · username · usernameLower (unique) · createdAt
-Post     id (cuid) · title · body · board · userId → User · createdAt
-Comment  id (cuid) · body · postId → Post · userId → User · createdAt
+Post     id (cuid) · title · body · board · userId → User · createdAt · hidden (default false)
+Comment  id (cuid) · body · postId → Post · userId → User · createdAt · hidden (default false)
 Vote     (userId, postId) composite PK · type UP|DOWN
+Report   id · postId? → Post · commentId? → Comment · reporterId → User · reason · createdAt
 ```
 All foreign keys use `onDelete: Cascade`. Indexes: `Post(board, createdAt)`, `Post(createdAt)`, `Comment(postId, createdAt)`, `Vote(postId)`.
+
+Reports require exactly one target, a trimmed 3–500 character reason, and unique `(postId, reporterId)` / `(commentId, reporterId)` pairs. A member cannot report their own content. Parent-row locks serialize reporting and moderation with writes/deletion. Hidden posts return 404 on direct reads, comments and votes; hidden comments are omitted from lists and counts. Authors may still delete their own hidden posts. Report DTOs return only `{ success: true }`; admin queue DTOs include content, counts and reasons, never identities.
 
 ## 4. Auth flow
 
@@ -42,6 +46,7 @@ All foreign keys use `onDelete: Cascade`. Indexes: `Post(board, createdAt)`, `Po
 4. `session` callback: rebuild the session as `{ user: { id: anonId, username } }`.
 5. `middleware.ts`: not logged in → `/login` (API: 401). Logged in without username → `/setup-username` (API: 403). Fully set up → `/login` and `/setup-username` redirect to `/`.
 6. `/setup-username` POSTs `/api/username`, then calls `update()` from `useSession()` so the JWT picks up the username, then navigates to `/`.
+7. JWT and session maxAge are seven days; production cookies are Secure/HttpOnly/SameSite. Client updates cannot assign identities or privileges. Admin membership is checked live in FastAPI, not trusted from client/session fields.
 
 Why `middleware.ts` instead of `pages.newUser`: with JWT sessions and no database adapter NextAuth never flags a user as "new", so `newUser` never fires.
 
@@ -60,6 +65,11 @@ No response ever contains `userId`/anonId. `author` always means `{ username }`.
 | `GET /api/comments` | `?postId=` | `{ comments: CommentView[] }` oldest first |
 | `POST /api/comments` | `{ postId, body }` | `201 CommentView` |
 | `POST /api/votes` | `{ postId, type: "UP"\|"DOWN" }` | `{ score, myVote: "UP"\|"DOWN"\|null }` (same type again = toggle off) |
+| `POST /api/reports` | `{ postId?, commentId?, reason }` exactly one target | `{ success: true }`; duplicate report is idempotent while visible |
+| `GET /api/admin/status` | — | `{ isAdmin: boolean }` for the current member |
+| `GET /api/admin/reports` | — | Admin only: `{ items }`, latest 100 reported targets, each with id/kind/title/body/hidden/reportCount/reasons |
+| `PATCH /api/admin/{posts\|comments}/[id]` | `{ hidden: true }` | Admin only: `{ success: true }` |
+| `DELETE /api/admin/{posts\|comments}/[id]` | — | Admin only: `{ success: true }`, cascading deletion |
 
 Shapes:
 ```ts
@@ -69,6 +79,8 @@ type PostSummary = { id: string; title: string; body: string; board: string; cre
 type CommentView = { id: string; body: string; createdAt: string; author: Author; isMine: boolean }
 ```
 `score = UP votes − DOWN votes`. `isMine` is computed on the server by comparing `userId` to the session; the raw ID is never sent.
+
+JSON bodies over 20 KiB return 413 before parsing. Middleware rejects POST/DELETE/PATCH without the exact configured Origin (except NextAuth's own CSRF-protected subtree). Upstash limits per account: posts 5/hour, comments 20/hour, votes 60/min, username 5/hour; auth routes share 20/min per trusted Vercel IP. Rate rejections return JSON 429 and Retry-After; unavailable Redis fails closed with 503. Only namespaced HMAC identifiers go to Redis. The explicit development demo remains offline.
 
 ## 6. Privacy model — what is and isn't protected
 
@@ -90,6 +102,8 @@ type CommentView = { id: string; body: string; createdAt: string; author: Author
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google OAuth client |
 | `NEXTAUTH_SECRET` | signs/encrypts the JWT (`openssl rand -base64 32`) |
 | `NEXTAUTH_URL` | `http://localhost:3000` locally, the Vercel URL in production |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Next.js only: shared rate limits |
+| `ADMIN_ANON_IDS` | FastAPI only: comma-separated 32-character anonymous account IDs; empty disables admin access |
 | `ANON_PEPPER` | HMAC key for anonymous IDs (`openssl rand -hex 32`, min 32 chars) |
 | `ALLOWED_EMAIL_DOMAIN` | rkgit.edu.in; fixed in code, cannot broaden access |
 | `DATABASE_URL` | Supabase pooled connection (runtime, serverless-friendly) |

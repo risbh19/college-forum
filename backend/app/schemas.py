@@ -1,7 +1,7 @@
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
 
 Board = Literal["general", "cse", "hostel", "placements", "confessions"]
 VoteValue = Literal["UP", "DOWN"]
@@ -49,6 +49,49 @@ class CommentInput(Input):
 class VoteInput(Input):
     postId: StrictStr = Field(min_length=1, max_length=40)
     type: VoteValue
+
+
+class ReportInput(Input):
+    postId: StrictStr | None = Field(default=None, min_length=1, max_length=40)
+    commentId: StrictStr | None = Field(default=None, min_length=1, max_length=40)
+    reason: StrictStr = Field(min_length=3, max_length=500)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def trim_reason(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def one_target(self):
+        if (self.postId is None) == (self.commentId is None):
+            raise ValueError("Choose one report target")
+        return self
+
+
+class HideInput(Input):
+    hidden: Literal[True]
+
+
+class Success(BaseModel):
+    success: bool
+
+
+class AdminStatus(BaseModel):
+    isAdmin: bool
+
+
+class ModerationItem(BaseModel):
+    id: str
+    kind: Literal["posts", "comments"]
+    title: str | None
+    body: str
+    hidden: bool
+    reportCount: int
+    reasons: list[str]
+
+
+class ModerationQueue(BaseModel):
+    items: list[ModerationItem]
 
 
 class Author(BaseModel):

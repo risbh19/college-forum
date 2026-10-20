@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime
 
 from alembic import command
 from alembic.config import Config
@@ -7,15 +8,19 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, postgres_connect_args
 from app.models import Comment, Post, User, Vote
+from migrations.schema_v1 import Base as Baseline
 
 
 def test_baseline_adopts_existing_data_and_is_repeatable(tmp_path, monkeypatch):
     url = 'sqlite:///' + (tmp_path / 'forum.db').as_posix()
     engine = create_engine(url)
-    for table in [User.__table__, Post.__table__, Comment.__table__, Vote.__table__]:
-        table.create(engine)
+    for name in ['User', 'Post', 'Comment', 'Vote']:
+        Baseline.metadata.tables[name].create(engine)
     with Session(engine) as db, db.begin():
-        db.add(User(id='a' * 32, username='existing_alias', username_lower='existing_alias'))
+        db.execute(Baseline.metadata.tables['User'].insert().values(id='a' * 32, username='existing_alias', usernameLower='existing_alias', createdAt=datetime.now()))
+        db.execute(Baseline.metadata.tables['Post'].insert().values(id='original-post', title='Existing title', body='Existing body', board='general', userId='a' * 32, createdAt=datetime.now()))
+        db.execute(Baseline.metadata.tables['Comment'].insert().values(id='original-comment', body='Existing comment', postId='original-post', userId='a' * 32, createdAt=datetime.now()))
+        db.execute(Baseline.metadata.tables['Vote'].insert().values(userId='a' * 32, postId='original-post', type='UP'))
     monkeypatch.setenv('APP_ENV', 'test')
     monkeypatch.setenv('DATABASE_URL', url)
     monkeypatch.setenv('DIRECT_URL', '')
@@ -27,7 +32,12 @@ def test_baseline_adopts_existing_data_and_is_repeatable(tmp_path, monkeypatch):
     command.upgrade(config, 'head')
     with Session(engine) as db:
         assert db.scalar(select(User.username)) == 'existing_alias'
-    assert {'RateBucket', 'UsedAssertion', 'alembic_version'} <= set(inspect(engine).get_table_names())
+        assert db.get(Post, 'original-post').body == 'Existing body'
+        assert db.get(Post, 'original-post').hidden is False
+        assert db.get(Comment, 'original-comment').hidden is False
+        assert db.get(Vote, ('a' * 32, 'original-post')).type.value == 'UP'
+    assert {'RateBucket', 'UsedAssertion', 'Report', 'alembic_version'} <= set(inspect(engine).get_table_names())
+    assert 'hidden' in {column['name'] for column in inspect(engine).get_columns('Post')}
     engine.dispose()
 
 

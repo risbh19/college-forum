@@ -9,6 +9,7 @@ const configured = {
   BACKEND_SHARED_SECRET: 'synthetic-service-secret-at-least-32-chars',
   NEXTAUTH_URL: 'https://forum.rkgit.edu.in', BACKEND_URL: 'https://api.rkgit.edu.in',
   COLLEGE_FORUM_LOCAL: '0', ALLOWED_EMAIL_DOMAIN: 'rkgit.edu.in',
+  UPSTASH_REDIS_REST_URL: 'https://synthetic.upstash.io', UPSTASH_REDIS_REST_TOKEN: 'synthetic-private-token', VERCEL: '1',
 };
 
 test('production checks reject missing secrets without echoing values', () => {
@@ -27,4 +28,7 @@ test('production checks reject insecure origins, demo access and reused secrets'
   assert.ok(productionErrors({ ...configured, COLLEGE_FORUM_LOCAL: '1' }).length > 0);
   assert.ok(productionErrors({ ...configured, BACKEND_SHARED_SECRET: configured.NEXTAUTH_SECRET }).length > 0);
   assert.ok(productionErrors({ ...configured, ALLOWED_EMAIL_DOMAIN: 'gmail.com' }).length > 0);
+  assert.ok(productionErrors({ ...configured, UPSTASH_REDIS_REST_URL: 'http://unsafe.invalid' }).length > 0);
+  assert.ok(productionErrors({ ...configured, UPSTASH_REDIS_REST_TOKEN: '' }).length > 0);
+  assert.ok(productionErrors({ ...configured, VERCEL: undefined }).length > 0);
 });
