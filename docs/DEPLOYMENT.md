@@ -30,6 +30,16 @@ The current head is `0002_reports`: it preserves existing records, adds default-
 
 Set backend-only `ADMIN_ANON_IDS` to a comma-separated list of existing 32-character anonymous IDs for trusted moderators. An operator may obtain their **own** ID from their authenticated session; do not publish IDs or place them in `NEXT_PUBLIC_` variables. Do not change the identity pepper. Empty disables admin actions. Restart/redeploy the backend after changes. `/admin` shows the latest 100 reported targets; admins can hide/delete any post/comment on its detail page. Reports auto-hide at three distinct accounts, but require human review and an abuse contact. There is no unhide or appeal workflow in this release.
 
+To calculate a trusted moderator's ID locally, run this standalone helper from an interactive terminal at the repository root:
+
+```sh
+node scripts/print-anon-id.mjs
+```
+
+Enter the existing production `ANON_PEPPER` at the hidden prompt (at least 32 characters, with no echo or masking characters), then enter the moderator's college email at the normal prompt. The email prompt echoes normally; prompt labels use the terminal (stderr), and stdout contains only the 32-character ID plus a newline. The helper uses exactly `HMAC-SHA256(ANON_PEPPER, lowercase(trim(email)))`, truncated to 32 hex characters. It preserves pepper whitespace and never reads environment variables or files, including `.env`. It accepts no command-line arguments or piped input. Ctrl+C cancels and restores the terminal; invalid input or a non-interactive terminal exits without an ID. Never place the pepper in a command, shell variable, file, or chat. The helper neither stores inputs nor contacts any service, and is not imported by or deployed as an app endpoint.
+
+Copy the resulting ID privately into Render's `ADMIN_ANON_IDS` (comma-separate multiple IDs), then redeploy/restart FastAPI. The moderator must still sign in with the same permitted college account and choose a username; deriving an ID does not create an account or bypass verification. Preserve the existing pepper to retain account identities.
+
 ## 3. Create the Render backend
 
 1. In Render, create a **Blueprint** from the reviewed GitHub repository using root `render.yaml`. Alternatively create a Docker Web Service manually with the settings below.
