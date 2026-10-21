@@ -7,7 +7,7 @@ const ONE = 'a'.repeat(32), TWO = 'b'.repeat(32);
 const SECRET = 'synthetic-private-rate-limit-key-at-least-32';
 const TOKEN = 'synthetic-upstash-token-never-for-production';
 const ENV = { NEXTAUTH_SECRET: SECRET, UPSTASH_REDIS_REST_URL: 'https://synthetic.upstash.io', UPSTASH_REDIS_REST_TOKEN: TOKEN, VERCEL: '1' };
-const FAILURE_CODES = ['CONFIG_INVALID', 'VERCEL_ENV_MISSING', 'CLIENT_IP_MISSING', 'REDIS_TIMEOUT', 'REDIS_AUTH_OR_WRITE_FAILED', 'REDIS_OTHER'] as const;
+const FAILURE_CODES = ['CONFIG_INVALID', 'VERCEL_ENV_MISSING', 'CLIENT_IP_HEADER_ABSENT', 'CLIENT_IP_INVALID', 'REDIS_TIMEOUT', 'REDIS_AUTH_OR_WRITE_FAILED', 'REDIS_OTHER'] as const;
 const PRIVATE_DIAGNOSTIC = `${SECRET} ${TOKEN} ${ENV.UPSTASH_REDIS_REST_URL} 192.0.2.1 2001:db8::1 ${ONE} ${TWO}`;
 
 function captureLogs(context: TestContext) {
@@ -95,42 +95,130 @@ function authRequest(path: string, ip = '192.0.2.1', method = 'GET') {
   return new Request(`https://forum.example${path}`, { method, headers: { 'x-vercel-forwarded-for': ip } });
 }
 
-test('all auth methods/subroutes share 20/min per trusted IP; unrelated paths do not count', async (context) => {
+test('sign-in, callback and signout share 60/min per IP; routine auth calls do not spend quota', async (context) => {
   const { guard, seen, advance } = fixture(context);
-  for (let index = 0; index < 20; index++) {
-    assert.equal(await guard.auth(authRequest(['/api/auth', '/api/auth/csrf', '/api/auth/session', '/api/auth/callback/google'][index % 4], '192.0.2.1', index % 2 ? 'POST' : 'GET')), null);
+  const assertLogs = captureLogs(context);
+  for (let index = 0; index < 60; index++) {
+    assert.equal(await guard.auth(authRequest(['/api/auth/signin/google', '/api/auth/callback/google', '/api/auth/signout'][index % 3], '192.0.2.1', index % 2 ? 'POST' : 'GET')), null);
   }
+  assert.equal(seen.length, 60);
+  for (const [method, path] of [['GET', '/api/auth/session'], ['GET', '/api/auth/providers'], ['GET', '/api/auth/csrf'], ['POST', '/api/auth/_log']]) {
+    assert.equal(await guard.auth(authRequest(path, '192.0.2.1', method)), null);
+  }
+  assert.equal(seen.length, 60);
   const blocked = await guard.auth(authRequest('/api/auth/signin/google'));
   assert.equal(blocked?.status, 429);
   assert.equal(blocked?.headers.get('retry-after'), '60');
-  assert.equal(await guard.auth(authRequest('/api/auth/session', '192.0.2.2')), null);
-  assert.equal(await guard.auth(authRequest('/api/authentication')), null);
-  assert.ok(seen.every(call => call.limit === 20 && call.window === 60_000));
+  assert.equal(blocked?.headers.get('cache-control'), 'private, no-store');
+  assert.deepEqual(await blocked!.json(), { error: 'Too many requests. Try again shortly.' });
+  assert.equal(await guard.auth(authRequest('/api/auth/signin/google', '192.0.2.2')), null);
+  const sameIp = new Request('https://forum.example/api/auth/callback/google', { headers: { 'x-forwarded-for': '192.0.2.1:42000, 198.51.100.2' } });
+  assert.equal((await guard.auth(sameIp))?.status, 429);
+  assert.ok(seen.every(call => call.limit === 60 && call.window === 60_000));
   advance(60_001);
-  assert.equal(await guard.auth(authRequest('/api/auth/session')), null);
+  assert.equal(await guard.auth(authRequest('/api/auth/signin/google')), null);
+  assertLogs([]);
 });
 
-test('IP spelling and caller-supplied forwarding headers cannot rotate the bucket', async (context) => {
+test('all Vercel client IP headers normalize first entries, IPv4 ports and equivalent IP spellings', async (context) => {
   const { guard, seen } = fixture(context);
   const assertLogs = captureLogs(context);
-  await guard.auth(authRequest('/api/auth/session', '2001:0db8:0:0:0:0:0:1'));
-  await guard.auth(authRequest('/api/auth/session', '2001:db8::1'));
-  assert.equal(seen[0].key, seen[1].key);
-  await guard.auth(authRequest('/api/auth/session', '192.0.2.1'));
-  await guard.auth(authRequest('/api/auth/session', '::ffff:192.0.2.1'));
-  assert.equal(seen[2].key, seen[3].key);
-  const spoofed = new Request('https://forum.example/api/auth/session', { headers: { 'x-forwarded-for': '192.0.2.99', 'x-real-ip': '192.0.2.99' } });
-  assert.equal((await guard.auth(spoofed))?.status, 503);
-  for (const ip of ['192.0.2.1, 192.0.2.2', '999.0.0.1', '0192.0.2.1', 'bad-address']) assert.equal((await guard.auth(authRequest('/api/auth/session', ip)))?.status, 503);
-  const untrusted = createRateLimitGuard({ environment: () => ({ ...ENV, VERCEL: '' }), localDemo: () => false });
-  assert.equal((await untrusted.auth(authRequest('/api/auth/session')))?.status, 503);
-  assertLogs(['CLIENT_IP_MISSING', 'CLIENT_IP_MISSING', 'CLIENT_IP_MISSING', 'CLIENT_IP_MISSING', 'CLIENT_IP_MISSING', 'VERCEL_ENV_MISSING']);
+  for (const header of ['x-vercel-forwarded-for', 'x-real-ip', 'x-forwarded-for']) {
+    for (const ip of ['192.0.2.1', '192.0.2.1:443', '192.0.2.1:54321, 198.51.100.2', ' 192.0.2.1 , 198.51.100.2 ', '::ffff:192.0.2.1']) {
+      assert.equal(await guard.auth(new Request('https://forum.example/api/auth/signin/google', { headers: { [header]: ip } })), null);
+    }
+  }
+  assert.equal(new Set(seen.map(call => call.key)).size, 1);
+  const ipv4Key = seen[0].key;
+  const before = seen.length;
+  for (const header of ['x-vercel-forwarded-for', 'x-real-ip', 'x-forwarded-for']) {
+    for (const ip of ['2001:0db8:0:0:0:0:0:1', '2001:db8::1', '2001:db8::1, 198.51.100.2']) {
+      assert.equal(await guard.auth(new Request('https://forum.example/api/auth/signin/google', { headers: { [header]: ip } })), null);
+    }
+  }
+  assert.equal(new Set(seen.slice(before).map(call => call.key)).size, 1);
+  assert.notEqual(seen[before].key, ipv4Key);
+  assertLogs([]);
+});
+
+test('Vercel header precedence skips absent or blank values but never falls back past an invalid first entry', async context => {
+  const { guard, seen } = fixture(context);
+  const assertLogs = captureLogs(context);
+  await guard.auth(authRequest('/api/auth/signin/google'));
+  const ipv4Key = seen[0].key;
+  for (const headers of [
+    { 'x-vercel-forwarded-for': '192.0.2.1, 198.51.100.1', 'x-real-ip': '192.0.2.2', 'x-forwarded-for': '192.0.2.3' },
+    { 'x-vercel-forwarded-for': '', 'x-real-ip': '192.0.2.1:443, 198.51.100.1', 'x-forwarded-for': '192.0.2.3' },
+    { 'x-vercel-forwarded-for': ' ', 'x-real-ip': '', 'x-forwarded-for': '192.0.2.1, 198.51.100.1' },
+  ]) {
+    assert.equal(await guard.auth(new Request('https://forum.example/api/auth/signin/google', { headers })), null);
+    assert.equal(seen.at(-1)?.key, ipv4Key);
+  }
+  const before = seen.length;
+  const invalidHeaders: Record<string, string>[] = [
+    { 'x-vercel-forwarded-for': 'unknown', 'x-real-ip': '192.0.2.1', 'x-forwarded-for': '192.0.2.2' },
+    { 'x-real-ip': 'unknown', 'x-forwarded-for': '192.0.2.1' },
+    { 'x-forwarded-for': ', 192.0.2.1' },
+    { 'x-forwarded-for': 'unknown, 192.0.2.1' },
+  ];
+  for (const headers of invalidHeaders) {
+    await assertUnavailable(await guard.auth(new Request('https://forum.example/api/auth/signin/google', { headers })));
+  }
+  assert.equal(seen.length, before);
+  assertLogs(Array(4).fill('CLIENT_IP_INVALID'));
+});
+
+test('forwarding headers are never read or trusted outside Vercel', async context => {
+  const assertLogs = captureLogs(context);
+  const fetch = context.mock.method(globalThis, 'fetch', async () => { throw new Error(PRIVATE_DIAGNOSTIC); });
+  const request = new Request('https://forum.example/api/auth/signin/google', {
+    headers: { 'x-vercel-forwarded-for': '192.0.2.1', 'x-real-ip': '192.0.2.1', 'x-forwarded-for': '192.0.2.1', vercel: '1' },
+  });
+  const getHeader = context.mock.method(request.headers, 'get', () => { throw new Error(PRIVATE_DIAGNOSTIC); });
+  for (const vercel of [undefined, '', '0', 'true']) {
+    const guard = createRateLimitGuard({ environment: () => ({ ...ENV, VERCEL: vercel }), localDemo: () => false });
+    await assertUnavailable(await guard.auth(request));
+  }
+  assert.equal(getHeader.mock.callCount(), 0);
+  assert.equal(fetch.mock.callCount(), 0);
+  assertLogs(Array(4).fill('VERCEL_ENV_MISSING'));
+});
+
+test('routine auth and non-action paths bypass limiter configuration, IP checks and Redis', async context => {
+  const assertLogs = captureLogs(context);
+  const fetch = context.mock.method(globalThis, 'fetch', async () => { throw new Error(PRIVATE_DIAGNOSTIC); });
+  const environment = context.mock.fn(() => { throw new Error(PRIVATE_DIAGNOSTIC); });
+  const guard = createRateLimitGuard({ environment, localDemo: () => false });
+  for (const [method, path] of [
+    ['GET', '/api/auth/session'], ['GET', '/api/auth/providers'], ['GET', '/api/auth/csrf'], ['POST', '/api/auth/_log'],
+    ['POST', '/api/auth/session'], ['GET', '/api/auth/error'], ['GET', '/api/auth'],
+    ['POST', '/api/auth/signin-extra'], ['POST', '/api/authentication/signin'],
+  ]) {
+    const request = authRequest(path, '192.0.2.1', method);
+    const getHeader = context.mock.method(request.headers, 'get', () => { throw new Error(PRIVATE_DIAGNOSTIC); });
+    assert.equal(await guard.auth(request), null);
+    assert.equal(getHeader.mock.callCount(), 0);
+  }
+  assert.equal(environment.mock.callCount(), 0);
+  assert.equal(fetch.mock.callCount(), 0);
+  assertLogs([]);
+});
+
+test('encoded sign-in, callback and signout action names cannot bypass their shared quota', async context => {
+  const { guard, seen } = fixture(context);
+  const assertLogs = captureLogs(context);
+  for (const path of ['/api/auth/signin', '/api/auth/%73ignin/google', '/api/auth/%63allback/google', '/api/auth/%73ignout']) {
+    assert.equal(await guard.auth(authRequest(path)), null);
+  }
+  assert.equal(seen.length, 4);
+  assert.equal(new Set(seen.map(call => call.key)).size, 1);
+  assertLogs([]);
 });
 
 test('only namespaced HMAC keys reach Redis; SDK analytics and telemetry stay disabled', async (context) => {
   const { guard, seen } = fixture(context);
   await guard.account('POST', '/api/posts', ONE);
-  await guard.auth(authRequest('/api/auth/session'));
+  await guard.auth(authRequest('/api/auth/signin/google'));
   const expected = createHmac('sha256', SECRET).update(`ratelimit:posts:${ONE}`).digest('hex');
   assert.ok(seen[0].key.includes(expected));
   assert.ok(!seen[0].key.includes(ONE));
@@ -145,7 +233,7 @@ test('missing Redis configuration and remote failures return generic 503 without
   const { guard, offline } = fixture(context);
   const assertLogs = captureLogs(context);
   offline();
-  const result = await guard.auth(authRequest('/api/auth/session'));
+  const result = await guard.auth(authRequest('/api/auth/signin/google'));
   await assertUnavailable(result);
   assertLogs(['REDIS_OTHER']);
   for (const env of [{}, { ...ENV, UPSTASH_REDIS_REST_TOKEN: '' }, { ...ENV, UPSTASH_REDIS_REST_URL: 'http://unsafe.invalid' }]) {
@@ -167,21 +255,25 @@ test('configuration, Vercel and missing or invalid trusted IP checks log only th
   }
   for (const vercel of [undefined, '', '0']) {
     const guard = createRateLimitGuard({ environment: () => ({ ...ENV, VERCEL: vercel }), localDemo: () => false });
-    await assertUnavailable(await guard.auth(authRequest('/api/auth/session')));
+    await assertUnavailable(await guard.auth(authRequest('/api/auth/signin/google')));
     expected.push('VERCEL_ENV_MISSING');
   }
   const guard = createRateLimitGuard({ environment: () => ENV, localDemo: () => false });
-  const missingIp = new Request('https://forum.example/api/auth/session', { headers: { 'x-forwarded-for': '192.0.2.1' } });
-  await assertUnavailable(await guard.auth(missingIp));
-  expected.push('CLIENT_IP_MISSING');
-  for (const ip of ['', '999.0.0.1', '192.0.2.1, 192.0.2.2', `${TOKEN}:2001:db8::1`]) {
-    await assertUnavailable(await guard.auth(authRequest('/api/auth/session', ip)));
-    expected.push('CLIENT_IP_MISSING');
+  const absentHeaders: Record<string, string>[] = [{}, { 'x-client-ip': '192.0.2.1' },
+    { 'x-vercel-forwarded-for': '', 'x-real-ip': ' ', 'x-forwarded-for': '' }];
+  for (const headers of absentHeaders) {
+    await assertUnavailable(await guard.auth(new Request('https://forum.example/api/auth/signin/google', { headers })));
+    expected.push('CLIENT_IP_HEADER_ABSENT');
+  }
+  for (const ip of ['999.0.0.1', '0192.0.2.1', '192.0.2.1:65536', '192.0.2.1:443extra', '192.0.2.1:',
+    '192.0.2.1:123456', 'bad-address', '[2001:db8::1]:443', 'fe80::1%eth0', ', 192.0.2.1', `${TOKEN}:2001:db8::1`]) {
+    await assertUnavailable(await guard.auth(authRequest('/api/auth/signin/google', ip)));
+    expected.push('CLIENT_IP_INVALID');
   }
   await assertUnavailable(await guard.account('POST', '/api/posts', PRIVATE_DIAGNOSTIC));
   expected.push('CONFIG_INVALID');
   const unavailableEnvironment = createRateLimitGuard({ environment: () => { throw new Error(PRIVATE_DIAGNOSTIC); }, localDemo: () => false });
-  await assertUnavailable(await unavailableEnvironment.auth(authRequest('/api/auth/session')));
+  await assertUnavailable(await unavailableEnvironment.auth(authRequest('/api/auth/signin/google')));
   await assertUnavailable(await unavailableEnvironment.account('POST', '/api/posts', ONE));
   expected.push('CONFIG_INVALID', 'CONFIG_INVALID');
   assertLogs(expected);
@@ -197,7 +289,7 @@ test('real Redis SDK auth and write failures log no upstream body, command or pr
     { status: 500, message: 'Unexpected Redis failure' }];
   for (failure of failures) {
     const guard = createRateLimitGuard({ environment: () => ENV, localDemo: () => false });
-    await assertUnavailable(await guard.auth(authRequest('/api/auth/session')));
+    await assertUnavailable(await guard.auth(authRequest('/api/auth/signin/google')));
   }
   assertLogs(['REDIS_AUTH_OR_WRITE_FAILED', 'REDIS_AUTH_OR_WRITE_FAILED', 'REDIS_AUTH_OR_WRITE_FAILED', 'REDIS_AUTH_OR_WRITE_FAILED', 'REDIS_OTHER']);
 });
@@ -269,7 +361,7 @@ test('the explicit local demo stays offline and does not contact Redis', async (
   const fetch = context.mock.method(globalThis, 'fetch', async () => { throw new Error('No network expected'); });
   const guard = createRateLimitGuard({ environment: () => ({}), localDemo: () => true });
   assert.equal(await guard.account('POST', '/api/posts', ONE), null);
-  assert.equal(await guard.auth(authRequest('/api/auth/session')), null);
+  assert.equal(await guard.auth(authRequest('/api/auth/signin/google')), null);
   assert.equal(fetch.mock.callCount(), 0);
   assertLogs([]);
 });

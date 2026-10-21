@@ -7,7 +7,7 @@ export const RATE_LIMITS = {
   comments: { limit: 20, window: '1 h' },
   votes: { limit: 60, window: '1 m' },
   username: { limit: 5, window: '1 h' },
-  auth: { limit: 20, window: '1 m' },
+  auth: { limit: 60, window: '1 m' },
 } as const;
 
 type Action = keyof typeof RATE_LIMITS;
@@ -16,7 +16,7 @@ const accountActions = new Map<string, Action>([
 ]);
 type Environment = Record<string, string | undefined>;
 type Limiters = Record<Action, Pick<Ratelimit, 'limit'>>;
-type FailureReason = 'CONFIG_INVALID' | 'VERCEL_ENV_MISSING' | 'CLIENT_IP_MISSING'
+type FailureReason = 'CONFIG_INVALID' | 'VERCEL_ENV_MISSING' | 'CLIENT_IP_HEADER_ABSENT' | 'CLIENT_IP_INVALID'
   | 'REDIS_TIMEOUT' | 'REDIS_AUTH_OR_WRITE_FAILED' | 'REDIS_OTHER';
 type Options = {
   environment?: () => Environment;
@@ -73,6 +73,28 @@ function canonicalIp(value: string | null): string {
     return `${first >> 8}.${first & 255}.${last >> 8}.${last & 255}`;
   }
   return normalized;
+}
+
+/** Call only after verifying the server's VERCEL flag; never trust these on other hosts. */
+function vercelClientIp(request: Request): string | null {
+  for (const name of ['x-vercel-forwarded-for', 'x-real-ip', 'x-forwarded-for']) {
+    const value = request.headers.get(name);
+    if (value === null || !value.trim()) continue;
+    const first = value.split(',', 1)[0].trim();
+    const ipv4Port = first.match(/^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$/);
+    if (ipv4Port && Number(ipv4Port[2]) > 65535) throw new Error('Invalid client address');
+    // Invalid higher-priority headers fail closed; do not choose another identity.
+    return canonicalIp(ipv4Port ? ipv4Port[1] : first);
+  }
+  return null;
+}
+
+function isLimitedAuthPath(path: string): boolean {
+  if (!path.startsWith('/api/auth/')) return false;
+  try {
+    const action = decodeURIComponent(path.slice('/api/auth/'.length).split('/')[0]);
+    return ['signin', 'callback', 'signout'].includes(action);
+  } catch { return false; }
 }
 
 function redisFailureReason(error: unknown): FailureReason {
@@ -144,15 +166,16 @@ export function createRateLimitGuard(options: Options = {}) {
     },
     async auth(request: Request): Promise<Response | null> {
       const path = new URL(request.url).pathname;
-      if (!(path === '/api/auth' || path.startsWith('/api/auth/')) || localDemo()) return null;
+      if (!isLimitedAuthPath(path) || localDemo()) return null;
       let env: Environment;
       try { env = environment(); }
       catch { return unavailable('CONFIG_INVALID'); }
-      // Only Vercel's overwritten header is trusted. Never fall back to caller-supplied forwarding headers.
+      // Vercel overwrites these forwarding headers. No header is trusted off-platform.
       if (env.VERCEL !== '1') return unavailable('VERCEL_ENV_MISSING');
-      let ip: string;
-      try { ip = canonicalIp(request.headers.get('x-vercel-forwarded-for')); }
-      catch { return unavailable('CLIENT_IP_MISSING'); }
+      let ip: string | null;
+      try { ip = vercelClientIp(request); }
+      catch { return unavailable('CLIENT_IP_INVALID'); }
+      if (ip === null) return unavailable('CLIENT_IP_HEADER_ABSENT');
       return consume('auth', ip);
     },
   };
