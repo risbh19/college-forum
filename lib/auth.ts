@@ -6,8 +6,63 @@ import { backendUsername } from './backend-client';
 import { isLocalDemo, localAccountId, LOCAL_ACCOUNTS } from './local-mode';
 import { COLLEGE_AUTH_POLICY, COLLEGE_DOMAIN, isCollegeProfile, isCurrentForumToken, LOCAL_AUTH_POLICY } from './access-policy';
 
+type AuthFailureReason = 'OAUTH_TOKEN_EXCHANGE_FAILED' | 'OAUTH_STATE_OR_PKCE'
+  | 'OAUTH_ID_TOKEN_INVALID' | 'BACKEND_USERNAME_LOOKUP_FAILED' | 'OTHER';
+
+const authFailureCodes = new Map<string, AuthFailureReason>([
+  ['OAUTH_GET_ACCESS_TOKEN_ERROR', 'OAUTH_TOKEN_EXCHANGE_FAILED'],
+  ['OAUTH_V1_GET_ACCESS_TOKEN_ERROR', 'OAUTH_TOKEN_EXCHANGE_FAILED'],
+  ['OPError', 'OAUTH_TOKEN_EXCHANGE_FAILED'],
+  ['invalid_client', 'OAUTH_TOKEN_EXCHANGE_FAILED'],
+  ['invalid_grant', 'OAUTH_TOKEN_EXCHANGE_FAILED'],
+  ['unauthorized_client', 'OAUTH_TOKEN_EXCHANGE_FAILED'],
+  ['PKCE_ERROR', 'OAUTH_STATE_OR_PKCE'],
+  ['STATE_ERROR', 'OAUTH_STATE_OR_PKCE'],
+  ['PKCEError', 'OAUTH_STATE_OR_PKCE'],
+  ['StateError', 'OAUTH_STATE_OR_PKCE'],
+  ['JWTClaimValidationFailed', 'OAUTH_ID_TOKEN_INVALID'],
+  ['JWTExpired', 'OAUTH_ID_TOKEN_INVALID'],
+  ['JWTInvalid', 'OAUTH_ID_TOKEN_INVALID'],
+  ['JWSSignatureVerificationFailed', 'OAUTH_ID_TOKEN_INVALID'],
+  ['ERR_JWT_CLAIM_VALIDATION_FAILED', 'OAUTH_ID_TOKEN_INVALID'],
+  ['ERR_JWT_EXPIRED', 'OAUTH_ID_TOKEN_INVALID'],
+  ['ERR_JWT_INVALID', 'OAUTH_ID_TOKEN_INVALID'],
+  ['ERR_JWS_SIGNATURE_VERIFICATION_FAILED', 'OAUTH_ID_TOKEN_INVALID'],
+  ['BackendUsernameLookupError', 'BACKEND_USERNAME_LOOKUP_FAILED'],
+  ['BACKEND_USERNAME_LOOKUP_FAILED', 'BACKEND_USERNAME_LOOKUP_FAILED'],
+]);
+
+function authFailureReason(code: string, metadata: unknown): AuthFailureReason {
+  const failures: unknown[] = [metadata];
+  // Read only names/codes from bounded error/cause wrappers, never payloads or messages.
+  for (let index = 0; index < failures.length && index < 6; index++) {
+    const failure = failures[index];
+    if (!failure || typeof failure !== 'object') continue;
+    try {
+      const details = failure as { name?: unknown; code?: unknown; error?: unknown; cause?: unknown };
+      for (const hint of [details.code, details.name]) {
+        if (typeof hint !== 'string') continue;
+        const reason = authFailureCodes.get(hint);
+        if (reason) return reason;
+      }
+      failures.push(details.error, details.cause);
+    } catch { /* Malformed diagnostics must not break the logger or disclose data. */ }
+  }
+  // Ambiguous NextAuth wrappers remain OTHER; never infer a cause from message text.
+  return authFailureCodes.get(code) ?? 'OTHER';
+}
+
+class BackendUsernameLookupError extends Error {
+  readonly code = 'BACKEND_USERNAME_LOOKUP_FAILED';
+  constructor() {
+    super('Username lookup unavailable');
+    this.name = 'BackendUsernameLookupError';
+  }
+}
+
 async function usernameFor(anonId: string): Promise<string | null> {
-  return backendUsername(anonId);
+  try { return await backendUsername(anonId); }
+  catch { throw new BackendUsernameLookupError(); }
 }
 
 export const authOptions: NextAuthOptions = {
@@ -71,9 +126,9 @@ export const authOptions: NextAuthOptions = {
       };
     },
   },
-  // Provider failures can contain sensitive payloads. Keep application logging off.
+  // Provider failures can contain sensitive payloads. Emit only a fixed reason code.
   logger: {
-    error() {},
+    error(code, metadata) { console.error(authFailureReason(code, metadata)); },
     warn() {},
     debug() {},
   },

@@ -9,10 +9,111 @@ import { spawnSync } from 'node:child_process'
 const jwt = authOptions.callbacks?.jwt
 const session = authOptions.callbacks?.session
 const signIn = authOptions.callbacks?.signIn
-if (!jwt || !session || !signIn) throw new Error('Required privacy callbacks are missing')
+const logError = authOptions.logger?.error
+if (!jwt || !session || !signIn || !logError) throw new Error('Required privacy callbacks or logger are missing')
 
 const ANON_ID = 'a'.repeat(32)
 const EXPIRES = '2030-01-01T00:00:00.000Z'
+const PRIVATE_VALUES = ['synthetic-sensitive-access-token', 'synthetic-sensitive-refresh-token',
+  'synthetic-sensitive-client-secret', 'synthetic-person@rkgit.edu.in', 'Synthetic Real Name',
+  'synthetic-google-subject', 'https://example.invalid/private-callback?code=synthetic-code', '192.0.2.1', ANON_ID]
+const PRIVATE_DIAGNOSTIC = PRIVATE_VALUES.join(' ')
+
+function captureAuthLogs(context: TestContext) {
+  const error = context.mock.method(console, 'error', () => {})
+  const warn = context.mock.method(console, 'warn', () => {})
+  const log = context.mock.method(console, 'log', () => {})
+  const debug = context.mock.method(console, 'debug', () => {})
+  return (expected: readonly string[]) => {
+    const calls = error.mock.calls.map(call => call.arguments)
+    assert.deepEqual(calls, expected.map(reason => [reason]))
+    const output = JSON.stringify(calls)
+    for (const value of PRIVATE_VALUES) assert.ok(!output.includes(value))
+    assert.equal(warn.mock.callCount(), 0)
+    assert.equal(log.mock.callCount(), 0)
+    assert.equal(debug.mock.callCount(), 0)
+  }
+}
+
+test('NextAuth error logger emits only fixed codes for direct, wrapped and nested error names/codes', context => {
+  const assertLogs = captureAuthLogs(context)
+  const privateError = (details: { name?: string; code?: string } = {}) => Object.assign(new Error(PRIVATE_DIAGNOSTIC), {
+    stack: PRIVATE_DIAGNOSTIC, profile: { email: PRIVATE_VALUES[3], name: PRIVATE_VALUES[4], sub: PRIVATE_VALUES[5] },
+    access_token: PRIVATE_VALUES[0], refresh_token: PRIVATE_VALUES[1], url: PRIVATE_VALUES[6], ...details,
+  })
+  const cases: { code: string; metadata: Parameters<typeof logError>[1]; reason: string }[] = [
+    { code: 'OAUTH_GET_ACCESS_TOKEN_ERROR', metadata: privateError(), reason: 'OAUTH_TOKEN_EXCHANGE_FAILED' },
+    { code: 'OAUTH_V1_GET_ACCESS_TOKEN_ERROR', metadata: privateError(), reason: 'OAUTH_TOKEN_EXCHANGE_FAILED' },
+    { code: 'OAUTH_CALLBACK_ERROR', metadata: { error: privateError({ name: 'OPError' }), profile: PRIVATE_DIAGNOSTIC }, reason: 'OAUTH_TOKEN_EXCHANGE_FAILED' },
+    { code: 'OAUTH_CALLBACK_ERROR', metadata: privateError({ name: 'OAuthCallbackError', code: 'invalid_client' }), reason: 'OAUTH_TOKEN_EXCHANGE_FAILED' },
+    { code: 'OAUTH_CALLBACK_ERROR', metadata: privateError({ code: 'invalid_grant' }), reason: 'OAUTH_TOKEN_EXCHANGE_FAILED' },
+    { code: 'PKCE_ERROR', metadata: privateError(), reason: 'OAUTH_STATE_OR_PKCE' },
+    { code: 'STATE_ERROR', metadata: privateError(), reason: 'OAUTH_STATE_OR_PKCE' },
+    { code: 'OAUTH_CALLBACK_ERROR', metadata: { error: privateError({ name: 'StateError' }) }, reason: 'OAUTH_STATE_OR_PKCE' },
+    { code: 'OAUTH_CALLBACK_ERROR', metadata: privateError({ name: 'PKCEError' }), reason: 'OAUTH_STATE_OR_PKCE' },
+    { code: 'OAUTH_CALLBACK_ERROR', metadata: privateError({ code: 'ERR_JWT_CLAIM_VALIDATION_FAILED' }), reason: 'OAUTH_ID_TOKEN_INVALID' },
+    { code: 'OAUTH_CALLBACK_ERROR', metadata: { error: privateError({ name: 'JWSSignatureVerificationFailed' }) }, reason: 'OAUTH_ID_TOKEN_INVALID' },
+    { code: 'OAUTH_CALLBACK_ERROR', metadata: Object.assign(privateError(), { cause: { error: privateError({ code: 'ERR_JWT_EXPIRED' }) } }), reason: 'OAUTH_ID_TOKEN_INVALID' },
+    { code: 'OAUTH_CALLBACK_HANDLER_ERROR', metadata: privateError({ name: 'BackendUsernameLookupError' }), reason: 'BACKEND_USERNAME_LOOKUP_FAILED' },
+    { code: 'JWT_SESSION_ERROR', metadata: { error: privateError({ code: 'BACKEND_USERNAME_LOOKUP_FAILED' }) }, reason: 'BACKEND_USERNAME_LOOKUP_FAILED' },
+    { code: 'OAUTH_CALLBACK_ERROR', metadata: privateError({ name: 'OAuthCallbackError' }), reason: 'OTHER' },
+    { code: PRIVATE_DIAGNOSTIC, metadata: privateError({ name: PRIVATE_DIAGNOSTIC, code: PRIVATE_DIAGNOSTIC }), reason: 'OTHER' },
+    { code: 'OAUTH_CALLBACK_ERROR', metadata: privateError({ name: `OPError ${PRIVATE_DIAGNOSTIC}`, code: `PKCE_ERROR ${PRIVATE_DIAGNOSTIC}` }), reason: 'OTHER' },
+    { code: 'OAUTH_CALLBACK_ERROR', metadata: Object.assign(privateError(), { message: 'PKCE_ERROR invalid_grant ERR_JWT_INVALID' }), reason: 'OTHER' },
+  ]
+  for (const { code, metadata } of cases) logError(code, metadata)
+  authOptions.logger?.warn?.('NO_SECRET')
+  authOptions.logger?.debug?.(PRIVATE_DIAGNOSTIC, { profile: PRIVATE_DIAGNOSTIC, tokens: PRIVATE_DIAGNOSTIC })
+  assert.equal(authOptions.debug, false)
+  assertLogs(cases.map(item => item.reason))
+})
+
+test('NextAuth diagnostics never inspect messages, payloads or serialization hooks, even with malformed metadata', context => {
+  const assertLogs = captureAuthLogs(context)
+  const unread = context.mock.fn(() => { throw new Error(PRIVATE_DIAGNOSTIC) })
+  const guarded = Object.defineProperties({ name: 'Error', code: 'unknown' }, Object.fromEntries(
+    ['message', 'stack', 'profile', 'email', 'tokens', 'url', 'toJSON'].map(key => [key, { get: unread }]),
+  ))
+  const cyclic = { name: 'Error', cause: {} }
+  cyclic.cause = cyclic
+  const hostile = new Proxy({}, { get: unread })
+  for (const metadata of [guarded, { error: guarded }, cyclic, hostile, null, undefined, PRIVATE_DIAGNOSTIC]) {
+    assert.doesNotThrow(() => logError(PRIVATE_DIAGNOSTIC, metadata as Parameters<typeof logError>[1]))
+  }
+  assert.equal(unread.mock.callCount(), 1) // Only the hostile proxy's name/code access throws.
+  assertLogs(Array(7).fill('OTHER'))
+})
+
+test('backend username lookup failures stay closed and reach the NextAuth logger as a fixed safe code', async context => {
+  const assertLogs = captureAuthLogs(context)
+  const lookup = mockUsernameLookup(context, null)
+  let expected = 0
+  await withEnvironment('ANON_PEPPER', '0123456789abcdef0123456789abcdef', async () => {
+    for (const failure of ['http', 'network']) {
+      lookup.mock.mockImplementation(async () => {
+        if (failure === 'network') throw new Error(PRIVATE_DIAGNOSTIC)
+        return Response.json({ error: PRIVATE_DIAGNOSTIC }, { status: 503 })
+      })
+      for (const input of [
+        { ...jwtInput({}), account: { provider: 'google', type: 'oauth' as const, providerAccountId: 'synthetic-provider-id' }, profile: googleProfile('student@rkgit.edu.in', true), trigger: 'signIn' as const },
+        { ...jwtInput({ anonId: ANON_ID, authPolicy: COLLEGE_AUTH_POLICY, username: null }), trigger: 'update' as const },
+      ]) {
+        await assert.rejects(async () => jwt(input), (error: unknown) => {
+          assert.ok(error instanceof Error)
+          assert.equal(error.name, 'BackendUsernameLookupError')
+          assert.equal(error.message, 'Username lookup unavailable')
+          assert.equal('cause' in error, false)
+          // Simulate NextAuth's callback/session error handler receiving the rejection.
+          logError('OAUTH_CALLBACK_HANDLER_ERROR', { error })
+          return true
+        })
+        expected++
+      }
+    }
+  })
+  assert.equal(lookup.mock.callCount(), 4)
+  assertLogs(Array(expected).fill('BACKEND_USERNAME_LOOKUP_FAILED'))
+})
 
 test('JWT sessions and cookies have a seven-day lifetime and production always requires secure cookies', () => {
   assert.equal(authOptions.session?.strategy, 'jwt')
