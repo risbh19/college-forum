@@ -11,14 +11,14 @@ A Reddit-style forum for one college where people can post and comment **anonymo
 | Topic | Decision |
 |---|---|
 | Who can read | Logged-in users only (keeps the forum inside the college). |
-| Who can log in | Only verified college-managed `@rkgit.edu.in` Google Workspace accounts, with the exact matching validated `hd` claim. The user requested this fixed college policy; no environment override broadens it. |
+| Who can log in | Students require verified college-managed `@rkgit.edu.in` Google Workspace accounts, with exact validated `hd`. The user authorized a separate, privately configured production operator username/password at `/admin/login`; it grants no password signup for students. |
 | Local development | `npm run local` provides shared synthetic demo accounts and portable PostgreSQL without external setup. This is a user-requested development-only exception; production Google authentication is unchanged. |
 | Identity | `anonId = HMAC-SHA256(ANON_PEPPER, lowercase(email))`, first 32 hex chars. |
 | Public name | Username chosen once, 3–20 chars `[a-zA-Z0-9_]`, unique case-insensitively, not changeable in v1. |
 | Boards | Fixed list in `lib/boards.ts`: general, cse, hostel, placements, confessions. |
 | Votes | One vote per user per post: UP or DOWN. Clicking the same vote again removes it. |
 | Deleting | Authors can delete their own posts (comments/votes cascade). No editing in v1. |
-| Moderation | Members report posts/comments; three distinct reporters auto-hide the target. Backend `ADMIN_ANON_IDS` controls admin-only hide/delete and `/admin` review. |
+| Moderation | Members report posts/comments; three distinct reporters auto-hide the target. Backend `ADMIN_ANON_IDS` controls the `/admin` portal: statistics, search of all content, hide/restore/delete, report dismissal and account suspension. |
 | Out of scope (v1) | Image uploads, comment voting, nested replies, notifications, username change, account deletion UI. |
 
 ### Local app boundary
@@ -34,6 +34,7 @@ Comment  id (cuid) · body · postId → Post · userId → User · createdAt ·
 Vote     (userId, postId) composite PK · type UP|DOWN
 Report   id · postId? → Post · commentId? → Comment · reporterId → User · reason · createdAt
 ```
+`User.suspended` is a boolean, false by default. Migration `0003_admin_accounts` adds it without changing existing records or identities. Suspension denies all member API reads and writes on the next request, including existing sessions. The private identity/session lookup remains available for sign-in; it grants no forum access. Existing content remains unless separately moderated. Accounts are listed and targeted only by username; admin accounts cannot be suspended through the portal. Admin roles remain backend-only configuration.
 All foreign keys use `onDelete: Cascade`. Indexes: `Post(board, createdAt)`, `Post(createdAt)`, `Comment(postId, createdAt)`, `Vote(postId)`.
 
 Reports require exactly one target, a trimmed 3–500 character reason, and unique `(postId, reporterId)` / `(commentId, reporterId)` pairs. A member cannot report their own content. Parent-row locks serialize reporting and moderation with writes/deletion. Hidden posts return 404 on direct reads, comments and votes; hidden comments are omitted from lists and counts. Authors may still delete their own hidden posts. Report DTOs return only `{ success: true }`; admin queue DTOs include content, counts and reasons, never identities.
@@ -49,6 +50,12 @@ Reports require exactly one target, a trimmed 3–500 character reason, and uniq
 7. JWT and session maxAge are seven days; production cookies are Secure/HttpOnly/SameSite. Client updates cannot assign identities or privileges. Admin membership is checked live in FastAPI, not trusted from client/session fields.
 
 Why `middleware.ts` instead of `pages.newUser`: with JWT sessions and no database adapter NextAuth never flags a user as "new", so `newUser` never fires.
+
+### Dedicated production administrator login
+
+The operator-only NextAuth v4 credentials provider is enabled only by complete private configuration, `NODE_ENV=production`, and HTTPS frontend/backend origins. Local demo credentials retain their original development-only boundary. The operator uses a random synthetic ID, independent of student HMAC identities. FastAPI requires a signed `admin-login` assertion whose subject matches its configured, explicitly allowlisted operator ID, validates a strict username/password input, and verifies a salted scrypt hash (N=32768, r=8, p=3). It creates the synthetic account after the first successful authentication only, rejecting username collisions and suspended accounts. The response exposes only username. No plaintext password is stored in the database or hosting configuration.
+
+Admin login uses the existing CSRF-protected NextAuth flow, Vercel auth IP throttling, and a shared FastAPI limit of five operator attempts per minute, including failures. Missing limiter infrastructure fails closed. Sessions are rebuilt from `{ anonId, username, authPolicy }`; an operator-specific non-identifying policy version permits revocation without changing student sessions or `ANON_PEPPER`. Every admin action still checks the backend allowlist. Disabling the frontend flag or rotating its version invalidates existing operator-password sessions. The offline generator writes a private ignored credential sheet and never contacts a database or hosting service.
 
 ## 5. API contract
 
@@ -68,7 +75,12 @@ No response ever contains `userId`/anonId. `author` always means `{ username }`.
 | `POST /api/reports` | `{ postId?, commentId?, reason }` exactly one target | `{ success: true }`; duplicate report is idempotent while visible |
 | `GET /api/admin/status` | — | `{ isAdmin: boolean }` for the current member |
 | `GET /api/admin/reports` | — | Admin only: `{ items }`, latest 100 reported targets, each with id/kind/title/body/hidden/reportCount/reasons |
-| `PATCH /api/admin/{posts\|comments}/[id]` | `{ hidden: true }` | Admin only: `{ success: true }` |
+| `GET /api/admin/overview` | — | Admin only: aggregate members/suspendedMembers/posts/comments/hiddenPosts/hiddenComments/reportedItems counts |
+| `GET /api/admin/content` | `?kind=posts\|comments&board=<slug>&visibility=all\|visible\|hidden&q=<text>&page=1` | Admin only: `{ items, hasMore }`, 20 items/page; content, username, board, date, visibility and parent post reference; no account IDs |
+| `GET /api/admin/accounts` | `?q=<username>&page=1` | Admin only: `{ items, hasMore }`, 20 items/page; username, createdAt, suspended and isAdmin only |
+| `PATCH /api/admin/accounts/[username]` | `{ suspended: boolean }` | Admin only: `{ success: true }`; protected admins return 403 |
+| `PATCH /api/admin/{posts\|comments}/[id]` | `{ hidden: boolean }` | Admin only: `{ success: true }`; restore retains reports and never restores a hidden parent automatically |
+| `DELETE /api/admin/reports/{posts\|comments}/[id]` | — | Admin only: `{ success: true }`; clears the target's reports without changing visibility; new reports can be submitted |
 | `DELETE /api/admin/{posts\|comments}/[id]` | — | Admin only: `{ success: true }`, cascading deletion |
 
 Shapes:
@@ -104,6 +116,9 @@ JSON bodies over 20 KiB return 413 before parsing. Middleware rejects POST/DELET
 | `NEXTAUTH_URL` | `http://localhost:3000` locally, the Vercel URL in production |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Next.js only: shared rate limits |
 | `ADMIN_ANON_IDS` | FastAPI only: comma-separated 32-character anonymous account IDs; empty disables admin access |
+| `ADMIN_LOGIN_ACCOUNT_ID` | Both services: privately configured random synthetic operator ID |
+| `ADMIN_LOGIN_ENABLED`, `ADMIN_LOGIN_VERSION` | Next.js only: explicit production operator-login flag and revocable session version |
+| `ADMIN_LOGIN_USERNAME`, `ADMIN_LOGIN_PASSWORD_HASH` | FastAPI only: dedicated username and salted scrypt verifier; no plaintext password |
 | `ANON_PEPPER` | HMAC key for anonymous IDs (`openssl rand -hex 32`, min 32 chars) |
 | `ALLOWED_EMAIL_DOMAIN` | rkgit.edu.in; fixed in code, cannot broaden access |
 | `DATABASE_URL` | Supabase pooled connection (runtime, serverless-friendly) |

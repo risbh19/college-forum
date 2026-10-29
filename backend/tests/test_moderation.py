@@ -98,7 +98,7 @@ def test_admin_authorization_is_server_side_and_hide_delete_cascade(client, kind
     for method, data in [("PATCH", {"hidden": True}), ("DELETE", None)]:
         assert call(client, method, target, data, viewer=TWO).status_code == 403
         assert call(client, method, target, data, viewer=NEW).status_code == 403
-    assert call(client, "PATCH", target, {"hidden": False}).status_code == 400
+    assert call(client, "PATCH", target, {"hidden": "false"}).status_code == 400
     assert call(client, "PATCH", target, {"hidden": True, "userId": TWO}).status_code == 400
     response = call(client, "PATCH", target, {"hidden": True})
     assert response.json() == {"success": True}

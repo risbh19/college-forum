@@ -77,7 +77,7 @@ def test_readiness_requires_migrated_database_and_expected_schema(client):
     assert client[0].get('/ready').status_code == 503
     with client[1].begin() as db:
         db.execute(text('CREATE TABLE alembic_version (version_num VARCHAR(32) PRIMARY KEY)'))
-        db.execute(text("INSERT INTO alembic_version VALUES ('0002_reports')"))
+        db.execute(text("INSERT INTO alembic_version VALUES ('0003_admin_accounts')"))
     assert client[0].get('/ready').json() == {'status': 'ready'}
     with client[1].begin() as db:
         db.execute(text("UPDATE alembic_version SET version_num = 'old-revision'"))

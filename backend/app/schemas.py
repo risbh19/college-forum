@@ -12,6 +12,15 @@ class Input(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+class AdminLoginInput(Input):
+    username: StrictStr = Field(min_length=3, max_length=20, pattern=r"^[a-zA-Z0-9_]+$")
+    password: StrictStr = Field(min_length=1, max_length=1024)
+
+
+class AdminLoginResult(BaseModel):
+    username: str
+
+
 class UsernameInput(Input):
     username: StrictStr = Field(min_length=3, max_length=20)
 
@@ -69,7 +78,51 @@ class ReportInput(Input):
 
 
 class HideInput(Input):
-    hidden: Literal[True]
+    hidden: bool
+
+
+class SuspensionInput(Input):
+    suspended: bool
+
+
+class AdminOverview(BaseModel):
+    members: int
+    suspendedMembers: int
+    posts: int
+    comments: int
+    hiddenPosts: int
+    hiddenComments: int
+    reportedItems: int
+
+
+class AdminContentItem(BaseModel):
+    id: str
+    kind: Literal["posts", "comments"]
+    postId: str
+    title: str
+    body: str
+    board: Board
+    username: str
+    createdAt: str
+    hidden: bool
+    parentHidden: bool
+
+
+class AdminContentPage(BaseModel):
+    items: list[AdminContentItem]
+    hasMore: bool
+
+
+class AdminAccount(BaseModel):
+    username: str
+    createdAt: str
+    suspended: bool
+    isAdmin: bool
+
+
+class AdminAccountsPage(BaseModel):
+    items: list[AdminAccount]
+    hasMore: bool
 
 
 class Success(BaseModel):

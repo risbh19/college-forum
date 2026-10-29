@@ -35,6 +35,7 @@ def test_baseline_adopts_existing_data_and_is_repeatable(tmp_path, monkeypatch):
     command.upgrade(config, 'head')
     with Session(engine) as db:
         assert db.scalar(select(User.username)) == 'existing_alias'
+        assert db.scalar(select(User.suspended)) is False
         assert db.get(Post, 'original-post').body == 'Existing body'
         assert db.get(Post, 'original-post').hidden is False
         assert db.get(Comment, 'original-comment').hidden is False

@@ -16,7 +16,9 @@ function allowedMethods(path: string): string[] {
   if (path === '/api/posts' || path === '/api/comments') return ['GET', 'POST'];
   if (['/api/username', '/api/votes', '/api/reports'].includes(path)) return ['POST'];
   if (/^\/api\/posts\/[A-Za-z0-9_-]{1,40}$/.test(path)) return ['GET', 'DELETE'];
-  if (['/api/admin/reports', '/api/admin/status'].includes(path)) return ['GET'];
+  if (['/api/admin/reports', '/api/admin/status', '/api/admin/overview', '/api/admin/content', '/api/admin/accounts'].includes(path)) return ['GET'];
+  if (/^\/api\/admin\/accounts\/[a-zA-Z0-9_]{3,20}$/.test(path)) return ['PATCH'];
+  if (/^\/api\/admin\/reports\/(posts|comments)\/[A-Za-z0-9_-]{1,40}$/.test(path)) return ['DELETE'];
   if (/^\/api\/admin\/(posts|comments)\/[A-Za-z0-9_-]{1,40}$/.test(path)) return ['PATCH', 'DELETE'];
   return [];
 }

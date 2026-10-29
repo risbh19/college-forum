@@ -10,6 +10,33 @@ function request(endpoint: string) {
   return new Request(`${ORIGIN}/api/${endpoint}`, { method: 'POST', headers: { origin: ORIGIN, 'content-type': 'application/json' }, body: '{}' });
 }
 
+test('admin read routes forward bounded queries and preserve backend authorization', async () => {
+  for (const endpoint of ['admin/overview', 'admin/content', 'admin/accounts']) {
+    const backend = async (_viewer: string, path: string) => ({ path });
+    const proxy = createForumProxy({ session: async () => session, backend });
+    const response = await proxy(new Request(`${ORIGIN}/api/${endpoint}?page=2`), params(endpoint));
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { path: `/api/${endpoint}?page=2` });
+    const denied = createForumProxy({ session: async () => session, backend: async () => { throw new BackendError(403, 'Admin access required'); } });
+    assert.equal((await denied(new Request(`${ORIGIN}/api/${endpoint}`), params(endpoint))).status, 403);
+  }
+});
+
+test('suspension and report dismissal routes require same-origin mutations', async (context) => {
+  const previous = process.env.NEXTAUTH_URL;
+  process.env.NEXTAUTH_URL = ORIGIN;
+  context.after(() => { if (previous === undefined) delete process.env.NEXTAUTH_URL; else process.env.NEXTAUTH_URL = previous; });
+  const backend = context.mock.fn(async () => ({ success: true }));
+  const proxy = createForumProxy({ session: async () => session, backend, limit: async () => null });
+  for (const [endpoint, method] of [['admin/accounts/member_one', 'PATCH'], ['admin/reports/posts/test', 'DELETE']] as const) {
+    const route = params(endpoint);
+    assert.equal((await proxy(new Request(`${ORIGIN}/api/${endpoint}`, { method }), route)).status, 403);
+    const response = await proxy(new Request(`${ORIGIN}/api/${endpoint}`, { method, headers: { origin: ORIGIN, 'content-type': 'application/json' }, ...(method === 'PATCH' ? { body: '{"suspended":true}' } : {}) }), route);
+    assert.equal(response.status, 200);
+  }
+  assert.equal(backend.mock.callCount(), 2);
+});
+
 test('all proxy methods fail closed on auth, membership, path, CSRF, content type and body validation', async (context) => {
   const previous = process.env.NEXTAUTH_URL;
   process.env.NEXTAUTH_URL = ORIGIN;

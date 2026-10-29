@@ -17,12 +17,24 @@ class Settings(BaseSettings):
     college_forum_local: bool = False
     max_body_bytes: int = 20 * 1024
     admin_anon_ids: str = Field(default="", repr=False)
+    admin_login_username: str = Field(default="", repr=False)
+    admin_login_account_id: str = Field(default="", repr=False)
+    admin_login_password_hash: SecretStr = Field(default="", repr=False)
 
     def is_admin(self, viewer: str) -> bool:
         return viewer in {value.strip() for value in self.admin_anon_ids.split(",") if value.strip()}
 
     @model_validator(mode="after")
     def validate_security(self):
+        from .admin_credentials import HASH_PATTERN
+        login = (self.admin_login_username, self.admin_login_account_id, self.admin_login_password_hash.get_secret_value())
+        if any(login) and not (
+            all(login) and re.fullmatch(r"[a-zA-Z0-9_]{3,20}", self.admin_login_username)
+            and re.fullmatch(r"[a-f0-9]{32}", self.admin_login_account_id)
+            and re.fullmatch(HASH_PATTERN, self.admin_login_password_hash.get_secret_value())
+            and self.is_admin(self.admin_login_account_id) and not self.college_forum_local
+        ):
+            raise ValueError("Admin login requires a complete valid configuration and an explicitly authorized operator ID")
         if any(not re.fullmatch(r"[a-f0-9]{32}", value.strip()) for value in self.admin_anon_ids.split(",") if value.strip()):
             raise ValueError("ADMIN_ANON_IDS must contain comma-separated anonymous IDs")
         if len(self.backend_shared_secret.get_secret_value()) < 32:

@@ -38,7 +38,9 @@ const origin = `http://localhost:${appPort}`;
 const backendUrl = `http://127.0.0.1:${backendPort}`;
 const databaseUrl = `postgresql://local_forum:${encodeURIComponent(settings.password)}@127.0.0.1:${databasePort}/college_forum_local`;
 const sharedEnv = { ...process.env, COLLEGE_FORUM_LOCAL: '1', BACKEND_URL: backendUrl, BACKEND_SHARED_SECRET: settings.backendSharedSecret };
-const backendEnv = { ...sharedEnv, APP_ENV: 'development', DATABASE_URL: databaseUrl, DIRECT_URL: databaseUrl, PYTHONUTF8: '1' };
+for (const name of ['ADMIN_LOGIN_ENABLED', 'ADMIN_LOGIN_ACCOUNT_ID', 'ADMIN_LOGIN_VERSION', 'ADMIN_LOGIN_USERNAME', 'ADMIN_LOGIN_PASSWORD_HASH']) sharedEnv[name] = '';
+const backendEnv = { ...sharedEnv, APP_ENV: 'development', DATABASE_URL: databaseUrl, DIRECT_URL: databaseUrl, PYTHONUTF8: '1',
+  ADMIN_ANON_IDS: '1'.repeat(32) };
 delete backendEnv.NEXTAUTH_SECRET;
 delete backendEnv.ANON_PEPPER;
 const webEnv = { ...sharedEnv, NODE_ENV: 'development', NEXTAUTH_URL: origin,
@@ -104,6 +106,7 @@ try {
   stage = 'frontend startup';
   console.log(`\nCollege Forum: ${origin}\nFastAPI docs (local only): ${backendUrl}/docs`);
   console.log('Shared demo accounts; saved data stays in .local/postgres. Ctrl+C stops all three services.\n');
+  console.log('Local demo admin: sign in as Student One, then open /admin.\n');
   app = spawn(process.execPath, [path.join(root, 'node_modules/next/dist/bin/next'), 'dev', '--hostname', '127.0.0.1', '--port', String(appPort)],
     { cwd: root, env: webEnv, stdio: 'inherit', windowsHide: true });
   app.once('error', () => { console.error('Frontend could not start.'); void shutdown(1); });
