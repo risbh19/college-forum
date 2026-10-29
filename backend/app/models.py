@@ -23,6 +23,7 @@ class User(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     username: Mapped[str] = mapped_column(String)
     username_lower: Mapped[str] = mapped_column("usernameLower", String, unique=True)
+    suspended: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column("createdAt", DateTime, default=utcnow)
 
 

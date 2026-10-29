@@ -78,7 +78,7 @@ async def principal(request: Request) -> str:
             raise ValueError()
         if any(type(claims[key]) is not int for key in ("iat", "nbf", "exp")) or not 0 < claims["exp"] - claims["iat"] <= 30:
             raise ValueError()
-        expected_scope = "identity" if request.url.path == "/internal/session" else "forum"
+        expected_scope = {"/internal/session": "identity", "/internal/admin-login": "admin-login"}.get(request.url.path, "forum")
         if claims["scope"] != expected_scope or claims["method"] != request.method or claims["path"] != request.url.path:
             raise ValueError()
         if not hmac.compare_digest(claims["bodyHash"], hashlib.sha256(await request.body()).hexdigest()):
@@ -93,8 +93,11 @@ async def principal(request: Request) -> str:
 def consume_budget(engine, settings, claims, method, path):
     key = settings.backend_shared_secret.get_secret_value().encode()
     now = int(time.time())
-    operation = path if path in {"/api/posts", "/api/comments", "/api/votes", "/api/username", "/api/reports"} else "/read"
+    operation = path if path in {"/api/posts", "/api/comments", "/api/votes", "/api/username", "/api/reports", "/internal/admin-login"} else "/read"
     limit = {"/api/posts": 10, "/api/comments": 30, "/api/votes": 120, "/api/username": 5, "/api/reports": 10}.get(operation, 240) if method != "GET" else 240
+    if path == "/internal/admin-login":
+        # One shared operator bucket, independent of submitted username and client IP.
+        limit = 5
     if settings.college_forum_local:
         limit *= 10
     bucket_key = hmac.new(key, f"rate:{claims['sub']}:{method}:{operation}".encode(), hashlib.sha256).hexdigest()

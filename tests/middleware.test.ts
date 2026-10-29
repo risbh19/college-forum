@@ -56,6 +56,7 @@ test('logged-out users are redirected from protected pages and can open login', 
     }
     assertAllowed(await request('/login'))
     assertAllowed(await request('/privacy'))
+    assertAllowed(await request('/admin/login'))
   })
 })
 

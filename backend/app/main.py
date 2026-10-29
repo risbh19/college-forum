@@ -99,8 +99,11 @@ def create_app(settings: Settings | None = None, engine=None):
                 yield db
 
     def member(viewer: str = Depends(principal), db: Session = Depends(database, scope="function")):
-        if db.get(User, viewer) is None:
+        account = db.get(User, viewer)
+        if account is None:
             raise HTTPException(403, "Choose a username first")
+        if account.suspended:
+            raise HTTPException(403, "Your account is suspended")
         return viewer
 
     @app.get("/health")
@@ -112,7 +115,7 @@ def create_app(settings: Settings | None = None, engine=None):
         if engine.dialect.name == 'postgresql':
             db.execute(text("SET LOCAL statement_timeout = '3000ms'"))
         revision = db.execute(text('SELECT version_num FROM alembic_version')).scalar_one_or_none()
-        if revision != '0002_reports':
+        if revision != '0003_admin_accounts':
             raise HTTPException(503, 'Service temporarily unavailable')
         for model in (User, Post, Comment, Vote, Report, RateBucket, UsedAssertion):
             db.execute(select(model).limit(0))
@@ -206,4 +209,6 @@ def create_app(settings: Settings | None = None, engine=None):
         return vote_states(db, [body.postId], viewer)[body.postId]
 
     app.include_router(moderation_router(settings, member, database))
+    from .admin_login import admin_login_router
+    app.include_router(admin_login_router(settings, database))
     return app

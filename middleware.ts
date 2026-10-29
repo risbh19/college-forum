@@ -24,6 +24,7 @@ export async function middleware(req: NextRequest) {
   const next = () => secure(NextResponse.next({ request: { headers: requestHeaders } }));
   const { pathname } = req.nextUrl;
   if (pathname === '/privacy') return next();
+  if (pathname === '/admin/login') return next();
   const isApi = pathname === '/api' || pathname.startsWith('/api/');
   if (pathname === '/api/auth' || pathname.startsWith('/api/auth/')) {
     const limited = await rateLimits.auth(req);

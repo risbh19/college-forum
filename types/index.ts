@@ -25,3 +25,9 @@ export type CommentView = {
 export type PostsPage = { posts: PostSummary[]; nextCursor: string | null };
 export type PaginatedPosts = PostsPage;
 export type ModerationItem = { id: string; kind: 'posts' | 'comments'; title: string | null; body: string; hidden: boolean; reportCount: number; reasons: string[] };
+
+export type AdminOverview = { members: number; suspendedMembers: number; posts: number; comments: number; hiddenPosts: number; hiddenComments: number; reportedItems: number };
+export type AdminContentItem = { id: string; kind: 'posts' | 'comments'; postId: string; title: string; body: string; board: string; username: string; createdAt: string; hidden: boolean; parentHidden: boolean };
+export type AdminContentPage = { items: AdminContentItem[]; hasMore: boolean };
+export type AdminAccount = { username: string; createdAt: string; suspended: boolean; isAdmin: boolean };
+export type AdminAccountsPage = { items: AdminAccount[]; hasMore: boolean };

@@ -4,7 +4,8 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { emailToAnonId } from './hash';
 import { backendUsername } from './backend-client';
 import { isLocalDemo, localAccountId, LOCAL_ACCOUNTS } from './local-mode';
-import { COLLEGE_AUTH_POLICY, COLLEGE_DOMAIN, isCollegeProfile, isCurrentForumToken, LOCAL_AUTH_POLICY } from './access-policy';
+import { adminLoginPolicy, COLLEGE_AUTH_POLICY, COLLEGE_DOMAIN, isAdminLoginToken, isCollegeProfile, isCurrentForumToken, LOCAL_AUTH_POLICY } from './access-policy';
+import { authorizeAdmin } from './admin-login';
 
 type AuthFailureReason = 'OAUTH_TOKEN_EXCHANGE_FAILED' | 'OAUTH_STATE_OR_PKCE'
   | 'OAUTH_ID_TOKEN_INVALID' | 'BACKEND_USERNAME_LOOKUP_FAILED' | 'OTHER';
@@ -68,6 +69,11 @@ async function usernameFor(anonId: string): Promise<string | null> {
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   providers: [
+    ...(adminLoginPolicy() ? [CredentialsProvider({
+      id: 'admin-login', name: 'Admin login',
+      credentials: { username: { label: 'Username', type: 'text' }, password: { label: 'Password', type: 'password' } },
+      async authorize(credentials) { return authorizeAdmin({ username: credentials?.username, password: credentials?.password }); },
+    })] : []),
     ...(isLocalDemo() ? [CredentialsProvider({
       id: 'local-demo',
       name: 'Local demo',
@@ -90,12 +96,20 @@ export const authOptions: NextAuthOptions = {
   jwt: { maxAge: 7 * 24 * 60 * 60 },
   callbacks: {
     async signIn({ profile, account, user }) {
+      if (account?.provider === 'admin-login') {
+        return adminLoginPolicy() !== null && user.id === process.env.ADMIN_LOGIN_ACCOUNT_ID;
+      }
       if (account?.provider === 'local-demo') {
         return isLocalDemo() && Object.values(LOCAL_ACCOUNTS).some((id) => id === user.id);
       }
       return account?.provider === 'google' && isCollegeProfile(profile);
     },
     async jwt({ token, profile, trigger, account, user }) {
+      if (account?.provider === 'admin-login') {
+        const policy = adminLoginPolicy();
+        if (!policy || user?.id !== process.env.ADMIN_LOGIN_ACCOUNT_ID) return {};
+        return { anonId: user.id, username: await usernameFor(user.id), authPolicy: policy };
+      }
       if (account?.provider === 'local-demo' && user && isLocalDemo()
         && Object.values(LOCAL_ACCOUNTS).some((id) => id === user.id)) {
         return { anonId: user.id, username: await usernameFor(user.id), authPolicy: LOCAL_AUTH_POLICY };
@@ -111,7 +125,7 @@ export const authOptions: NextAuthOptions = {
 
       const anonId = typeof token.anonId === 'string' ? token.anonId : undefined;
       let username = typeof token.username === 'string' ? token.username : null;
-      if (anonId && (trigger === 'update' || !username)) {
+      if (anonId && (trigger === 'update' || !username || isAdminLoginToken(token))) {
         // Client update() data is untrusted; read the immutable username from the DB.
         username = await usernameFor(anonId);
       }

@@ -8,6 +8,7 @@ const publicErrors = new Set([
   'Choose a username first', 'Username already set', 'Username already taken or already set',
   'Post not found', 'Comment not found', 'Content not found', 'Not your post', 'Admin access required',
   'You cannot report your own content', 'Too many requests. Try again shortly.',
+  'Your account is suspended', 'Account not found', 'Admin accounts cannot be suspended',
   'This page link has expired. Refresh the feed and try again.',
 ]);
 
@@ -25,7 +26,7 @@ export async function backendRequest<T>(viewerId: string, path: string, method =
     || (base.protocol !== 'https:' && !(base.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(base.hostname)))) {
     throw new BackendError(503, 'Backend configuration is invalid');
   }
-  if (!path.startsWith('/api/') && path !== '/internal/session') throw new BackendError(400, 'Invalid backend path');
+  if (!path.startsWith('/api/') && !['/internal/session', '/internal/admin-login'].includes(path)) throw new BackendError(400, 'Invalid backend path');
   const destination = new URL(path, base);
   const headers: Record<string, string> = {
     Authorization: `Bearer ${signBackendAssertion(viewerId, method, destination.pathname, body, scope)}`,
