@@ -37,7 +37,7 @@ Follow DEPLOYMENT.md for Vercel + Render + Supabase and run the read-only script
 - [ ] Apply Alembic to the reviewed/backed-up PostgreSQL database. Confirm old data, aliases, pepper, and vote enum remain intact.
 - [ ] Verify RLS on all forum/security tables and no public Supabase Data API reads/writes. Verify the restricted server role has the required access.
 - [ ] Keep database credentials only in FastAPI; Google/session/pepper only in Next.js; give both servers the same independent service secret. Keep demo flags disabled.
-- [ ] Test verified @rkgit.edu.in Google Workspace sign-in with matching hd, personal Gmail rejection, old unrestricted session invalidation, first alias, duplicate/reserved alias rejection, logout, and seven-day session expiry.
+- [ ] Test verified personal Gmail and other-domain Workspace sign-in, unverified profile rejection, old-policy session invalidation, first alias, duplicate/reserved alias rejection, logout, and seven-day session expiry.
 - [ ] Verify session responses contain only the user's own ID, alias, and expiry; public content responses expose no identity fields other than usernames.
 - [ ] Repeat create/comment/vote/toggle/delete across two browser profiles; cross-account deletion must return 403 and leave the post intact.
 - [ ] Unauthenticated direct backend business requests return 401; production docs are unavailable. Cross-site or missing-Origin frontend mutations return 403.

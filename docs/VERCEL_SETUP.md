@@ -42,7 +42,7 @@ Use your exact assigned frontend origin for **Authorized JavaScript origins**, a
 https://YOUR-PROJECT.vercel.app/api/auth/callback/google
 ```
 
-Choose Internal audience only if the Cloud project belongs to the college Workspace organization; otherwise configure External with the app's server-side college checks. While Google is in Testing, add the intended college test accounts. Review publishing and college Workspace app-access requirements before inviting the whole campus. The application always requires verified `@rkgit.edu.in` email and matching Google hosted domain.
+Choose an **External** audience for personal Gmail and other Workspace organizations. While Google is in Testing, add the intended test accounts. No college domain restriction or OAuth `hd` hint is applied. Verified Gmail and matching-domain Workspace claims are accepted. Member sign-up and sign-in use Google only.
 
 Save the Google client ID and secret directly in Vercel; do not put them in GitHub or chat. The public `/privacy` route is available for the app's privacy notice after deployment.
 
@@ -62,7 +62,6 @@ Vercel → project → Settings → Environment Variables. Select **Production o
 | `UPSTASH_REDIS_REST_URL` | Your Redis REST URL |
 | `UPSTASH_REDIS_REST_TOKEN` | Your Redis REST token |
 | `COLLEGE_FORUM_LOCAL` | `0` |
-| `ALLOWED_EMAIL_DOMAIN` | `rkgit.edu.in` |
 | `NEXT_TELEMETRY_DISABLED` | `1` |
 
 The three session/identity/service keys must be independent. Use **Sensitive** for secret values, and keep Vercel's automatic system-environment exposure enabled for `VERCEL=1`. Do not add `DATABASE_URL`, `DIRECT_URL`, `ADMIN_ANON_IDS`, or any `NEXT_PUBLIC_` secret. Previews need separate service data and secrets.

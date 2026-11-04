@@ -1,6 +1,6 @@
 # Deploy RKGIT College Forum
 
-Target: **Vercel frontend + Render FastAPI + Supabase PostgreSQL**. Student sign-in requires verified, college-managed **@rkgit.edu.in Google Workspace accounts**. Personal Gmail, other domains, subdomains and accounts without the matching Google hosted-domain claim are rejected by server code. Changing or omitting `ALLOWED_EMAIL_DOMAIN` cannot open student access. The user-authorized separate production operator credentials are configured through [Dedicated live admin login](ADMIN_LOGIN.md); they do not enable password registration for students.
+Target: **Vercel frontend + Render FastAPI + Supabase PostgreSQL**. Member sign-in is open to verified Gmail and Google Workspace accounts from any domain. The retired `ALLOWED_EMAIL_DOMAIN` setting has no effect. Dedicated production operator credentials remain separate; see [Dedicated live admin login](ADMIN_LOGIN.md).
 
 For dashboard-by-dashboard instructions, follow [Manual Vercel deployment](VERCEL_SETUP.md). Database migration head `0002_reports`, RLS on all seven forum/security tables, and a read-only Upstash PING were verified during setup. Hosted Render readiness, the Vercel frontend, real Google sign-in and live quotas remain unverified. Do not paste credentials into chat or commit them.
 
@@ -63,7 +63,7 @@ The unprivileged container listens on `0.0.0.0:$PORT`. Render supplies `PORT`; d
 
 Expected backend results: `/health` 200; `/ready` 200 only when the expected migration and forum/security tables are usable; unsigned `/api/posts` and `/internal/session` 401; `/docs` and `/openapi.json` 404. `/health` alone does not establish database readiness. Keep `BACKEND_URL` in sync if you add a custom domain, including the Host used by Render health checks.
 
-## 4. Configure Google Workspace sign-in
+## 4. Configure Google sign-in
 
 1. Create a Google OAuth **Web application** client in Google Cloud / Google Auth Platform. Use only `openid email profile` scopes.
 2. Determine your stable Vercel production origin, for example `https://your-project.vercel.app` or your own verified custom domain. Use the exact real origin, not the example and not a changing preview URL.
@@ -74,15 +74,15 @@ Expected backend results: `/health` 200; `/ready` 200 only when the expected mig
    ```
 
 4. Fill app branding with accurate operator/support details. The app provides a public `/privacy` page; review it against your operational retention/backups/contact process, then use its production URL for the privacy notice. Announce an actual administrator contact channel to members.
-5. If the Cloud project belongs to the college Workspace organization, **Internal** audience can limit access at Google too. A personal Google Cloud project cannot simply claim that organization; use External with the app's server-side college checks. Review Google's current publishing/branding requirements and the college administrator's OAuth app-access policy before campus launch. Workspace administrators can block even a published OAuth app.
-6. Configure production access rather than relying on a temporary developer setup. Test with two actual permitted college accounts. The `hd` request hint selects the college, but access is enforced by checking the validated ID token's exact `hd`, email domain and boolean `email_verified` in server callbacks.
+5. Use an **External** audience to allow personal Gmail and other organizations. While the app is in Testing, add the intended Google test accounts; publish for broader access after reviewing Google's requirements. Workspace administrators can still restrict OAuth apps for their own members.
+6. Configure production access rather than relying on a temporary developer setup. Test with a personal Gmail account and an account from a different Workspace domain. No `hd` request hint is sent. Server callbacks require verified Gmail or a matching Workspace `hd`.
 
 No Google email/profile/hosted-domain claim is stored in the forum database or returned in the application session. The JWT retains only the anonymous identity, alias and a non-identifying authorization-policy version. Pre-policy sessions must sign in again. Local-demo sessions are rejected in production.
 
 ## 5. Create the Vercel frontend
 
 1. Import the same reviewed GitHub repository. Set **root directory to the repository root**, framework **Next.js**, and Node **22.x** (or another supported version >=20.9). Use the production branch containing these changes.
-2. `vercel.json` supplies `npm ci` and `node scripts/check-production.mjs && npm run build`. The preflight rejects missing/short/reused secrets, non-HTTPS origins, demo flags and misleading domain overrides without printing values.
+2. `vercel.json` supplies `npm ci` and `node scripts/check-production.mjs && npm run build`. The preflight rejects missing/short/reused secrets, non-HTTPS origins and demo flags without printing values.
 3. Create an Upstash Redis database, copy its REST URL/token privately, and add the variables from [frontend.env.example](../deploy/frontend.env.example) to Vercel's **Production** environment:
 
    | Variable | Value |
@@ -95,10 +95,9 @@ No Google email/profile/hosted-domain claim is stored in the forum database or r
    | `BACKEND_URL` | Exact Render backend HTTPS origin |
    | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Private Redis REST credentials, on Vercel only |
    | `COLLEGE_FORUM_LOCAL` | `0` |
-   | `ALLOWED_EMAIL_DOMAIN` | `rkgit.edu.in` (code also enforces this fixed policy) |
 
 4. Redeploy after configuring variables; an initial unconfigured build intentionally fails preflight. Do not set database credentials or `DIRECT_URL` on Vercel. Never prefix secrets with `NEXT_PUBLIC_`.
-5. Student-facing production login and `/privacy` must be publicly reachable. If Vercel Deployment Protection blocks visitors before Google login, configure the intended production access in your project settings. Protected forum pages themselves still require college sign-in.
+5. Student-facing production login and `/privacy` must be publicly reachable. If Vercel Deployment Protection blocks visitors before Google login, configure the intended production access in your project settings. Protected forum pages themselves still require member sign-in.
 6. Give previews a separate backend/database/secrets/Google client. An unconfigured preview intentionally fails preflight; do not copy production credentials into disposable previews.
 
 Keep Vercel's automatic system-environment exposure enabled so `VERCEL=1` is available. Auth throttling trusts only `x-vercel-forwarded-for`; self-hosted frontends require a reviewed proxy integration. Never copy the Redis token to Render or a `NEXT_PUBLIC_` variable. Previews must use separate Redis state/secrets. Quotas are posts 5/hour, comments 20/hour, votes 60/minute and username attempts 5/hour per anonymous account; all auth requests share 20/minute per normalized IP. Shared campus NAT users share that auth quota. Redis stores only HMAC keys; SDK analytics/telemetry are disabled. A Redis outage or missing configuration blocks protected requests with generic 503; limits return JSON 429 and `Retry-After` seconds. The explicitly enabled loopback local demo remains offline and bypasses Upstash.
@@ -113,7 +112,7 @@ Read-only checks against your actual public HTTPS origins:
 node scripts/deployment-smoke.mjs https://YOUR-FRONTEND https://YOUR-BACKEND
 ```
 
-The runner checks college-only login text, public security headers, Google-only auth, callback origin, unauthenticated access rejection, backend readiness and disabled production docs. It sends no credentials and creates no records. It does **not** prove Google sign-in works.
+The runner checks open Google login text, public security headers, allowed production auth providers, callback origin, unauthenticated access rejection, backend readiness and disabled production docs. It sends no credentials and creates no records. It does **not** prove Google sign-in works.
 
 Then use two real college accounts:
 

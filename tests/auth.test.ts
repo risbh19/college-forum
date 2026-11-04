@@ -3,7 +3,7 @@ import test, { type TestContext } from 'node:test'
 import type { Profile } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
 import { authOptions } from '../lib/auth'
-import { COLLEGE_AUTH_POLICY } from '../lib/access-policy'
+import { GOOGLE_AUTH_POLICY } from '../lib/access-policy'
 import { spawnSync } from 'node:child_process'
 
 const jwt = authOptions.callbacks?.jwt
@@ -96,7 +96,7 @@ test('backend username lookup failures stay closed and reach the NextAuth logger
       })
       for (const input of [
         { ...jwtInput({}), account: { provider: 'google', type: 'oauth' as const, providerAccountId: 'synthetic-provider-id' }, profile: googleProfile('student@rkgit.edu.in', true), trigger: 'signIn' as const },
-        { ...jwtInput({ anonId: ANON_ID, authPolicy: COLLEGE_AUTH_POLICY, username: null }), trigger: 'update' as const },
+        { ...jwtInput({ anonId: ANON_ID, authPolicy: GOOGLE_AUTH_POLICY, username: null }), trigger: 'update' as const },
       ]) {
         await assert.rejects(async () => jwt(input), (error: unknown) => {
           assert.ok(error instanceof Error)
@@ -164,7 +164,7 @@ function mockUsernameLookup(context: TestContext, username: string | null) {
 test('subsequent JWT callbacks strip provider identity and arbitrary legacy fields', async () => {
   const result = await jwt({
     ...jwtInput({
-      anonId: ANON_ID, authPolicy: COLLEGE_AUTH_POLICY,
+      anonId: ANON_ID, authPolicy: GOOGLE_AUTH_POLICY,
       username: 'shadowcoder',
       email: 'synthetic@college.edu',
       name: 'Synthetic Provider Name',
@@ -174,7 +174,7 @@ test('subsequent JWT callbacks strip provider identity and arbitrary legacy fiel
       arbitrary: { email: 'synthetic@college.edu' },
     }),
   })
-  assert.deepEqual(result, { anonId: ANON_ID, authPolicy: COLLEGE_AUTH_POLICY, username: 'shadowcoder' })
+  assert.deepEqual(result, { anonId: ANON_ID, authPolicy: GOOGLE_AUTH_POLICY, username: 'shadowcoder' })
 })
 
 test('legacy provider tokens without an anonymous identity cannot preserve PII', async () => {
@@ -195,7 +195,7 @@ test('session callback rebuilds a minimal session and ignores provider/session e
   }
   const result = await session({
     session: incoming,
-    token: { anonId: ANON_ID, authPolicy: COLLEGE_AUTH_POLICY, username: 'shadowcoder', email: 'synthetic@college.edu', sub: 'google-subject' },
+    token: { anonId: ANON_ID, authPolicy: GOOGLE_AUTH_POLICY, username: 'shadowcoder', email: 'synthetic@college.edu', sub: 'google-subject' },
     user: { id: 'provider-id', email: 'synthetic@college.edu', emailVerified: null },
     newSession: { user: { username: 'client_override' } },
     trigger: 'update',
@@ -206,7 +206,7 @@ test('session callback rebuilds a minimal session and ignores provider/session e
 test('new accounts receive a minimal session before choosing a username', async () => {
   const result = await session({
     session: { expires: EXPIRES, user: { id: 'old-id', username: null } },
-    token: { anonId: ANON_ID, authPolicy: COLLEGE_AUTH_POLICY, username: null },
+    token: { anonId: ANON_ID, authPolicy: GOOGLE_AUTH_POLICY, username: null },
     user: { id: 'provider-id', email: 'synthetic@college.edu', emailVerified: null },
     newSession: undefined,
     trigger: 'update',
@@ -224,7 +224,7 @@ test('initial OAuth JWT uses the HMAC identity and only reads the public usernam
       profile: { ...googleProfile('  STUDENT@RKGIT.EDU.IN  ', true), sub: 'provider-id', name: 'Synthetic Name' },
       trigger: 'signIn',
     })
-    assert.deepEqual(result, { anonId: '4d3049cdcd3a3d34c35a60af65bc3ecc', authPolicy: COLLEGE_AUTH_POLICY, username: 'shadowcoder' })
+    assert.deepEqual(result, { anonId: '4d3049cdcd3a3d34c35a60af65bc3ecc', authPolicy: GOOGLE_AUTH_POLICY, username: 'shadowcoder' })
     assert.equal(lookup.mock.callCount(), 1)
     assert.equal(new URL(String(lookup.mock.calls[0].arguments[0])).pathname, '/internal/session')
   })
@@ -234,11 +234,11 @@ test('client session updates reload the username from the DB instead of trusting
   const lookup = mockUsernameLookup(context, 'server_username')
 
   const result = await jwt({
-    ...jwtInput({ anonId: ANON_ID, authPolicy: COLLEGE_AUTH_POLICY, username: null, email: 'synthetic@college.edu' }),
+    ...jwtInput({ anonId: ANON_ID, authPolicy: GOOGLE_AUTH_POLICY, username: null, email: 'synthetic@college.edu' }),
     trigger: 'update',
     session: { user: { id: 'client-chosen-id', username: 'client_username' }, username: 'client_username' },
   })
-  assert.deepEqual(result, { anonId: ANON_ID, authPolicy: COLLEGE_AUTH_POLICY, username: 'server_username' })
+  assert.deepEqual(result, { anonId: ANON_ID, authPolicy: GOOGLE_AUTH_POLICY, username: 'server_username' })
   assert.equal(lookup.mock.callCount(), 1)
   assert.equal(new URL(String(lookup.mock.calls[0].arguments[0])).pathname, '/internal/session')
 })
@@ -248,45 +248,75 @@ test('first sign-in without a database account keeps the username unset', async 
 
   await withEnvironment('ANON_PEPPER', '0123456789abcdef0123456789abcdef', async () => {
     const result = await jwt({ ...jwtInput({}), account: { provider: 'google', type: 'oauth', providerAccountId: 'synthetic-provider-id' }, profile: googleProfile('student@rkgit.edu.in', true), trigger: 'signIn' })
-    assert.deepEqual(result, { anonId: '4d3049cdcd3a3d34c35a60af65bc3ecc', authPolicy: COLLEGE_AUTH_POLICY, username: null })
+    assert.deepEqual(result, { anonId: '4d3049cdcd3a3d34c35a60af65bc3ecc', authPolicy: GOOGLE_AUTH_POLICY, username: null })
   })
 })
 
-test('Google sign-in requires exact college email, verified boolean and hosted domain', async () => {
+test('Google sign-in accepts verified Gmail and other domains without a college hosted-domain hint', async () => {
   const input = { user: { id: 'provider-id' }, account: { provider: 'google', type: 'oauth' as const, providerAccountId: 'synthetic-id' } }
   assert.equal(await signIn({ ...input, profile: undefined }), false)
   for (const verified of [false, undefined, 'true', 1]) {
     assert.equal(await signIn({ ...input, profile: googleProfile('student@rkgit.edu.in', verified) }), false)
   }
-  for (const email of ['student@rkgit.edu.in', '  STUDENT@RKGIT.EDU.IN  ']) {
-    assert.equal(await signIn({ ...input, profile: googleProfile(email, true) }), true)
+  for (const email of ['student@rkgit.edu.in', '  STUDENT@GMAIL.COM  ', 'person@another-college.edu']) {
+    assert.equal(await signIn({ ...input, profile: googleProfile(email, true, email.trim().toLowerCase().split('@')[1]) }), true)
   }
-  for (const email of [undefined, 'student@gmail.com', 'student@evilrkgit.edu.in', 'student@rkgit.edu.in.attacker.invalid', 'student@sub.rkgit.edu.in', 'one@two@rkgit.edu.in', '@rkgit.edu.in']) {
+  for (const email of [undefined, '', 'not-an-email', 'one@two@rkgit.edu.in', '@rkgit.edu.in', 'one@', 'bad address@gmail.com']) {
     assert.equal(await signIn({ ...input, profile: googleProfile(email, true) }), false)
   }
   for (const hd of [undefined, null, '', 'gmail.com', 'sub.rkgit.edu.in', 'rkgit.edu.in.attacker.invalid']) {
-    const profile = googleProfile('student@rkgit.edu.in', true)
+    const profile = googleProfile('student@gmail.com', true)
     profile.hd = hd
-    assert.equal(await signIn({ ...input, profile }), false)
+    assert.equal(await signIn({ ...input, profile }), true)
   }
   assert.equal(await signIn({ ...input, account: null, profile: googleProfile('student@rkgit.edu.in', true) }), false)
+  // Reject Google-linked third-party mailboxes without current authoritative claims.
+  assert.equal(await signIn({ ...input, profile: googleProfile('person@outlook.com', true, null) }), false)
+  assert.equal(await signIn({ ...input, profile: googleProfile('person@another-college.edu', true, 'unrelated.edu') }), false)
 })
 
-test('an environment override cannot open sign-in to another domain', async () => {
-  for (const domain of [undefined, '', 'gmail.com']) await withEnvironment('ALLOWED_EMAIL_DOMAIN', domain, async () => {
+test('the retired college-domain setting cannot restrict the new open Google policy', async () => {
+  for (const domain of [undefined, '', 'rkgit.edu.in', 'gmail.com']) await withEnvironment('ALLOWED_EMAIL_DOMAIN', domain, async () => {
     const input = { user: { id: 'provider-id' }, account: { provider: 'google', type: 'oauth' as const, providerAccountId: 'synthetic-id' } }
-    assert.equal(await signIn({ ...input, profile: googleProfile('student@gmail.com', true, 'gmail.com') }), false)
+    assert.equal(await signIn({ ...input, profile: googleProfile('student@gmail.com', true, undefined) }), true)
     assert.equal(await signIn({ ...input, profile: googleProfile('student@rkgit.edu.in', true) }), true)
   })
 })
 
 test('legacy unrestricted sessions and attempted client upgrades fail closed', async () => {
-  const result = await jwt({ ...jwtInput({ anonId: ANON_ID, username: 'old_user' }), trigger: 'update', session: { authPolicy: COLLEGE_AUTH_POLICY } })
+  const result = await jwt({ ...jwtInput({ anonId: ANON_ID, username: 'old_user' }), trigger: 'update', session: { authPolicy: GOOGLE_AUTH_POLICY } })
   assert.deepEqual(result, {})
 })
 
-test('JWT callback refuses an unverified or wrong-domain initial profile', async () => {
-  for (const profile of [googleProfile('student@gmail.com', true), googleProfile('student@rkgit.edu.in', false), googleProfile('student@rkgit.edu.in', true, null)]) {
+test('JWT callback refuses unverified and malformed initial profiles', async () => {
+  for (const profile of [googleProfile('student@gmail.com', false), googleProfile('student@rkgit.edu.in', false), googleProfile('not-an-email', true)]) {
     assert.deepEqual(await jwt({ ...jwtInput({}), account: { provider: 'google', type: 'oauth', providerAccountId: 'synthetic-id' }, profile, trigger: 'signIn' }), {})
   }
+})
+
+test('personal Gmail sign-in keeps the same private HMAC identity and minimal JWT', async context => {
+  const lookup = mockUsernameLookup(context, null)
+  await withEnvironment('ANON_PEPPER', '0123456789abcdef0123456789abcdef', async () => {
+    const result = await jwt({ ...jwtInput({ email: 'student@gmail.com', name: 'Synthetic Name' }), account: { provider: 'google', type: 'oauth', providerAccountId: 'synthetic-id' }, profile: googleProfile('student@gmail.com', true, null), trigger: 'signIn' })
+    assert.deepEqual(Object.keys(result).sort(), ['anonId', 'authPolicy', 'username'])
+    assert.equal(result.authPolicy, GOOGLE_AUTH_POLICY)
+    assert.match(String(result.anonId), /^[a-f0-9]{32}$/)
+    assert.equal(lookup.mock.callCount(), 1)
+    assert.ok(!JSON.stringify(result).includes('student@gmail.com'))
+  })
+  const provider = authOptions.providers.find(item => item.id === 'google')
+  assert.ok(provider && 'options' in provider)
+  const authorization = provider.options?.authorization
+  assert.ok(authorization && typeof authorization === 'object')
+  assert.equal(authorization.params?.hd, undefined)
+})
+
+test('member signup stays Google-only even with obsolete email flags and rejects old password sessions', async () => {
+  const result = spawnSync(process.execPath, ['--import', 'tsx', '-e', "import('./lib/auth.ts').then(m => process.stdout.write((m.authOptions ?? m.default.authOptions).providers.map(p => p.options?.id ?? p.id).join(',')))"], {
+    env: { ...process.env, NODE_ENV: 'production', EMAIL_AUTH_ENABLED: '1', ADMIN_LOGIN_ENABLED: '0', COLLEGE_FORUM_LOCAL: '1' }, encoding: 'utf8', windowsHide: true,
+  })
+  assert.equal(result.status, 0)
+  assert.equal(result.stdout, 'google')
+  const resultToken = await jwt(jwtInput({ anonId: ANON_ID, username: 'synthetic_member', authPolicy: 'email-password-v1:' + 'b'.repeat(32) }))
+  assert.deepEqual(resultToken, {})
 })

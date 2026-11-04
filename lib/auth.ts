@@ -4,7 +4,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { emailToAnonId } from './hash';
 import { backendUsername } from './backend-client';
 import { isLocalDemo, localAccountId, LOCAL_ACCOUNTS } from './local-mode';
-import { adminLoginPolicy, COLLEGE_AUTH_POLICY, COLLEGE_DOMAIN, isAdminLoginToken, isCollegeProfile, isCurrentForumToken, LOCAL_AUTH_POLICY } from './access-policy';
+import { adminLoginPolicy, GOOGLE_AUTH_POLICY, isAdminLoginToken, isVerifiedGoogleProfile, isCurrentForumToken, LOCAL_AUTH_POLICY } from './access-policy';
 import { authorizeAdmin } from './admin-login';
 
 type AuthFailureReason = 'OAUTH_TOKEN_EXCHANGE_FAILED' | 'OAUTH_STATE_OR_PKCE'
@@ -87,7 +87,7 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID ?? '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
-      authorization: { params: { scope: 'openid email profile', hd: COLLEGE_DOMAIN, prompt: 'select_account' } },
+      authorization: { params: { scope: 'openid email profile', prompt: 'select_account' } },
       checks: ['pkce', 'state', 'nonce'],
     }),
   ],
@@ -102,7 +102,7 @@ export const authOptions: NextAuthOptions = {
       if (account?.provider === 'local-demo') {
         return isLocalDemo() && Object.values(LOCAL_ACCOUNTS).some((id) => id === user.id);
       }
-      return account?.provider === 'google' && isCollegeProfile(profile);
+      return account?.provider === 'google' && isVerifiedGoogleProfile(profile);
     },
     async jwt({ token, profile, trigger, account, user }) {
       if (account?.provider === 'admin-login') {
@@ -115,10 +115,10 @@ export const authOptions: NextAuthOptions = {
         return { anonId: user.id, username: await usernameFor(user.id), authPolicy: LOCAL_AUTH_POLICY };
       }
       if (profile?.email) {
-        if (account?.provider !== 'google' || !isCollegeProfile(profile)) return {};
+        if (account?.provider !== 'google' || !isVerifiedGoogleProfile(profile)) return {};
         const anonId = emailToAnonId(profile.email);
         // Never preserve the default provider token's identity fields.
-        return { anonId, username: await usernameFor(anonId), authPolicy: COLLEGE_AUTH_POLICY };
+        return { anonId, username: await usernameFor(anonId), authPolicy: GOOGLE_AUTH_POLICY };
       }
 
       if (!isCurrentForumToken(token)) return {};

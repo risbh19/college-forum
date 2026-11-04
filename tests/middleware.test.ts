@@ -3,7 +3,7 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 import { encode, type JWT } from 'next-auth/jwt'
 import { middleware } from '../middleware'
-import { COLLEGE_AUTH_POLICY, LOCAL_AUTH_POLICY } from '../lib/access-policy'
+import { GOOGLE_AUTH_POLICY, LOCAL_AUTH_POLICY } from '../lib/access-policy'
 import { rateLimits } from '../lib/rate-limit'
 
 const TEST_SECRET = 'synthetic-middleware-secret-only-for-tests-32'
@@ -103,7 +103,7 @@ test('auth endpoint exemptions respect the exact path boundary', async () => {
 
 test('accounts without a username can access setup and only its exact API endpoint', async () => {
   await withTestSecret(async () => {
-    const token = { anonId: 'a'.repeat(32), authPolicy: COLLEGE_AUTH_POLICY, username: null }
+    const token = { anonId: 'a'.repeat(32), authPolicy: GOOGLE_AUTH_POLICY, username: null }
     assertAllowed(await request('/setup-username', token))
     assertAllowed(await request('/api/username', token))
     assertAllowed(await request('/api/auth/session', token))
@@ -121,7 +121,7 @@ test('accounts without a username can access setup and only its exact API endpoi
 
 test('completed accounts reach protected content and are redirected away from auth setup', async () => {
   await withTestSecret(async () => {
-    const token = { anonId: 'b'.repeat(32), authPolicy: COLLEGE_AUTH_POLICY, username: 'shadowcoder' }
+    const token = { anonId: 'b'.repeat(32), authPolicy: GOOGLE_AUTH_POLICY, username: 'shadowcoder' }
     for (const path of ['/login', '/setup-username']) {
       assertRedirect(await request(path, token), '/')
     }
@@ -153,7 +153,7 @@ test('old unrestricted tokens and local-demo tokens cannot access production', a
 
 test('middleware requires the exact configured Origin for every POST DELETE and PATCH API mutation', async () => {
   await withTestSecret(async () => {
-    const token = { anonId: 'a'.repeat(32), authPolicy: COLLEGE_AUTH_POLICY, username: 'test_alias' }
+    const token = { anonId: 'a'.repeat(32), authPolicy: GOOGLE_AUTH_POLICY, username: 'test_alias' }
     for (const method of ['POST', 'DELETE', 'PATCH']) {
       for (const path of ['/api', '/api/posts', '/api/username', '/api/reports', '/api/admin/posts/test', '/api/authentication', '/api/future-route']) {
         for (const origin of [undefined, 'null', 'https://attacker.invalid', `${ORIGIN}.attacker.invalid`, 'http://localhost:3001']) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
-import { adminLoginPolicy, isCurrentForumToken, COLLEGE_AUTH_POLICY } from '../lib/access-policy';
+import { adminLoginPolicy, isCurrentForumToken, GOOGLE_AUTH_POLICY } from '../lib/access-policy';
 import { authorizeAdmin } from '../lib/admin-login';
 import { authOptions } from '../lib/auth';
 import type { JWT } from 'next-auth/jwt';
@@ -49,7 +49,7 @@ test('operator session version can be revoked without changing student sessions'
   assert.equal(isCurrentForumToken({ ...token, anonId: 'a'.repeat(32) }), false);
   process.env.ADMIN_LOGIN_VERSION = 'b'.repeat(32);
   assert.equal(isCurrentForumToken(token), false);
-  assert.equal(isCurrentForumToken({ anonId: 'a'.repeat(32), authPolicy: COLLEGE_AUTH_POLICY }), true);
+  assert.equal(isCurrentForumToken({ anonId: 'a'.repeat(32), authPolicy: GOOGLE_AUTH_POLICY }), true);
   process.env.ADMIN_LOGIN_ENABLED = '0';
   assert.equal(isCurrentForumToken({ anonId: ident, authPolicy: `admin-password-v1:${'b'.repeat(32)}` }), false);
 });

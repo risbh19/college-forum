@@ -17,19 +17,20 @@ try {
   const login = await request(frontend, '/login');
   assert.equal(login.status, 200, 'Frontend login must be public');
   const html = await login.text();
-  assert.match(html, /@rkgit\.edu\.in/);
+  assert.match(html, /Personal Gmail and Google Workspace accounts are welcome/);
   assert.doesNotMatch(html, /Explore as shadowcoder|Try username setup/);
   for (const name of ['content-security-policy', 'x-frame-options', 'x-content-type-options', 'strict-transport-security']) assert.ok(login.headers.get(name), `Missing ${name}`);
-  console.log('PASS college-only production login, no demo accounts, security headers');
+  console.log('PASS open Google production login, no demo accounts, security headers');
 
   const providers = await (await request(frontend, '/api/auth/providers')).json();
-  assert.deepEqual(Object.keys(providers), ['google']);
+  assert.ok(providers.google);
+  assert.ok(Object.keys(providers).every(name => ['google', 'admin-login'].includes(name)));
   assert.equal(new URL(providers.google.callbackUrl).origin, frontend.origin, 'Google callback must match production frontend');
   assert.equal((await request(frontend, '/api/posts')).status, 401);
   const home = await request(frontend, '/');
   assert.equal(home.status, 307);
   assert.equal(new URL(home.headers.get('location'), frontend).pathname, '/login');
-  console.log('PASS Google-only provider and logged-out access controls');
+  console.log('PASS production auth providers and logged-out access controls');
 
   for (const [path, status] of [['/health', 200], ['/ready', 200], ['/api/posts', 401], ['/internal/session', 401], ['/docs', 404], ['/openapi.json', 404]]) {
     assert.equal((await request(backend, path)).status, status, `Backend ${path}`);

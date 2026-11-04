@@ -27,7 +27,7 @@ test('production checks reject insecure origins, demo access and reused secrets'
   assert.ok(productionErrors({ ...configured, BACKEND_URL: configured.NEXTAUTH_URL }).length > 0);
   assert.ok(productionErrors({ ...configured, COLLEGE_FORUM_LOCAL: '1' }).length > 0);
   assert.ok(productionErrors({ ...configured, BACKEND_SHARED_SECRET: configured.NEXTAUTH_SECRET }).length > 0);
-  assert.ok(productionErrors({ ...configured, ALLOWED_EMAIL_DOMAIN: 'gmail.com' }).length > 0);
+  assert.deepEqual(productionErrors({ ...configured, ALLOWED_EMAIL_DOMAIN: 'gmail.com' }), []);
   assert.ok(productionErrors({ ...configured, UPSTASH_REDIS_REST_URL: 'http://unsafe.invalid' }).length > 0);
   assert.ok(productionErrors({ ...configured, UPSTASH_REDIS_REST_TOKEN: '' }).length > 0);
   assert.ok(productionErrors({ ...configured, VERCEL: undefined }).length > 0);

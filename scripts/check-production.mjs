@@ -21,7 +21,6 @@ export function productionErrors(environment) {
   }
   if (environment.NEXTAUTH_URL && environment.NEXTAUTH_URL === environment.BACKEND_URL) errors.push('Frontend and FastAPI must use separate service origins');
   if (environment.COLLEGE_FORUM_LOCAL && environment.COLLEGE_FORUM_LOCAL !== '0') errors.push('COLLEGE_FORUM_LOCAL must be 0 in production');
-  if (environment.ALLOWED_EMAIL_DOMAIN && environment.ALLOWED_EMAIL_DOMAIN !== 'rkgit.edu.in') errors.push('ALLOWED_EMAIL_DOMAIN cannot override the fixed college policy');
   try {
     const redis = new URL(environment.UPSTASH_REDIS_REST_URL ?? '');
     if (redis.protocol !== 'https:' || redis.username || redis.password || redis.pathname !== '/' || redis.search || redis.hash) throw new Error();
@@ -36,5 +35,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (errors.length) {
     console.error('Production configuration rejected:\n' + errors.map(error => `- ${error}`).join('\n'));
     process.exitCode = 1;
-  } else console.log('Production frontend configuration passed. College-only access is enforced in code.');
+  } else console.log('Production frontend configuration passed. Verified Google access is open to all domains.');
 }

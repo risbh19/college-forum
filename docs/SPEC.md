@@ -4,14 +4,14 @@ Source of truth for what we are building. If code and this file disagree, fix on
 
 ## 1. Goal
 
-A Reddit-style forum for one college where people can post and comment **anonymously**. Google login proves "this is a real person (from our college)", but the database must never be able to answer "who is shadowcoder42?".
+A Reddit-style forum for one college where people can post and comment **anonymously**. Google login verifies control of a Google account, but the database must never be able to answer "who is shadowcoder42?".
 
 ## 2. Decisions (change here first, then in code)
 
 | Topic | Decision |
 |---|---|
-| Who can read | Logged-in users only (keeps the forum inside the college). |
-| Who can log in | Students require verified college-managed `@rkgit.edu.in` Google Workspace accounts, with exact validated `hd`. The user authorized a separate, privately configured production operator username/password at `/admin/login`; it grants no password signup for students. |
+| Who can read | Logged-in users only. Membership is open to all Gmail and Google Workspace domains. |
+| Who can log in | Members use verified Gmail or Google Workspace accounts from any domain. The user authorized a separate, privately configured production operator username/password at `/admin/login`; it grants no password signup for students. |
 | Local development | `npm run local` provides shared synthetic demo accounts and portable PostgreSQL without external setup. This is a user-requested development-only exception; production Google authentication is unchanged. |
 | Identity | `anonId = HMAC-SHA256(ANON_PEPPER, lowercase(email))`, first 32 hex chars. |
 | Public name | Username chosen once, 3–20 chars `[a-zA-Z0-9_]`, unique case-insensitively, not changeable in v1. |
@@ -42,7 +42,7 @@ Reports require exactly one target, a trimmed 3–500 character reason, and uniq
 ## 4. Auth flow
 
 1. `/login` → Google OAuth (scopes: `openid email profile`, nothing more).
-2. `signIn` callback: require Google provider, boolean email_verified=true, exact normalized email domain rkgit.edu.in and exact hd=rkgit.edu.in. Reject other/missing claims.
+2. `signIn` callback: require Google provider, boolean email_verified=true and a valid email. Gmail requires no hosted-domain claim; Workspace requires an exact matching `hd` for its email domain, with no college allowlist or OAuth domain hint. Reject unverified/malformed or non-authoritative claims.
 3. `jwt` callback (first request after sign-in): compute `anonId` from `profile.email`, look up username, return a **fresh** token `{ anonId, username, authPolicy }` where authPolicy is a non-identifying authorization-policy version. Email, name, picture and Google ID are dropped here.
 4. `session` callback: rebuild the session as `{ user: { id: anonId, username } }`.
 5. `middleware.ts`: not logged in → `/login` (API: 401). Logged in without username → `/setup-username` (API: 403). Fully set up → `/login` and `/setup-username` redirect to `/`.
@@ -120,7 +120,6 @@ JSON bodies over 20 KiB return 413 before parsing. Middleware rejects POST/DELET
 | `ADMIN_LOGIN_ENABLED`, `ADMIN_LOGIN_VERSION` | Next.js only: explicit production operator-login flag and revocable session version |
 | `ADMIN_LOGIN_USERNAME`, `ADMIN_LOGIN_PASSWORD_HASH` | FastAPI only: dedicated username and salted scrypt verifier; no plaintext password |
 | `ANON_PEPPER` | HMAC key for anonymous IDs (`openssl rand -hex 32`, min 32 chars) |
-| `ALLOWED_EMAIL_DOMAIN` | rkgit.edu.in; fixed in code, cannot broaden access |
 | `DATABASE_URL` | Supabase pooled connection (runtime, serverless-friendly) |
 | `DIRECT_URL` | Supabase direct/session connection (used by `prisma db push`) |
 

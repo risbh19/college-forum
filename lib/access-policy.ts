@@ -1,7 +1,6 @@
 import { isLocalDemo } from './local-mode';
 
-export const COLLEGE_DOMAIN = 'rkgit.edu.in';
-export const COLLEGE_AUTH_POLICY = 'rkgit-google-workspace-v1';
+export const GOOGLE_AUTH_POLICY = 'verified-google-v2';
 export const LOCAL_AUTH_POLICY = 'local-demo-v1';
 
 export function adminLoginPolicy(): string | null {
@@ -22,14 +21,17 @@ export function isAdminLoginToken(token: { anonId?: unknown; authPolicy?: unknow
 }
 
 /** profile must come from NextAuth's validated Google ID token, never browser JSON. */
-export function isCollegeProfile(profile: { email?: unknown; email_verified?: unknown; hd?: unknown } | undefined): boolean {
-  if (typeof profile?.email !== 'string' || profile.email_verified !== true || profile.hd !== COLLEGE_DOMAIN) return false;
+export function isVerifiedGoogleProfile(profile: { email?: unknown; email_verified?: unknown; hd?: unknown } | undefined): boolean {
+  if (typeof profile?.email !== 'string' || profile.email_verified !== true) return false;
   const email = profile.email.trim().toLowerCase();
-  return /^[^@\s]+@rkgit\.edu\.in$/.test(email);
+  if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return false;
+  const domain = email.split('@')[1];
+  // Google is authoritative for Gmail and matching-domain Workspace mailboxes.
+  return domain === 'gmail.com' || (typeof profile.hd === 'string' && profile.hd.toLowerCase() === domain);
 }
 
-/** A non-identifying policy version invalidates sessions issued before college verification. */
+/** A non-identifying policy version invalidates sessions issued under the previous access policy. */
 export function isCurrentForumToken(token: { anonId?: unknown; authPolicy?: unknown } | null): boolean {
   if (typeof token?.anonId !== 'string' || !/^[a-f0-9]{32}$/.test(token.anonId)) return false;
-  return token.authPolicy === COLLEGE_AUTH_POLICY || isAdminLoginToken(token) || (token.authPolicy === LOCAL_AUTH_POLICY && isLocalDemo());
+  return token.authPolicy === GOOGLE_AUTH_POLICY || isAdminLoginToken(token) || (token.authPolicy === LOCAL_AUTH_POLICY && isLocalDemo());
 }
