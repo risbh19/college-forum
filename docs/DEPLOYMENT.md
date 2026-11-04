@@ -1,8 +1,8 @@
-# Deploy RKGIT College Forum
+# Deploy College Forum
 
 Target: **Vercel frontend + Render FastAPI + Supabase PostgreSQL**. Member sign-in is open to verified Gmail and Google Workspace accounts from any domain. The retired `ALLOWED_EMAIL_DOMAIN` setting has no effect. Dedicated production operator credentials remain separate; see [Dedicated live admin login](ADMIN_LOGIN.md).
 
-For dashboard-by-dashboard instructions, follow [Manual Vercel deployment](VERCEL_SETUP.md). Database migration head `0002_reports`, RLS on all seven forum/security tables, and a read-only Upstash PING were verified during setup. Hosted Render readiness, the Vercel frontend, real Google sign-in and live quotas remain unverified. Do not paste credentials into chat or commit them.
+For dashboard-by-dashboard instructions, follow [Manual Vercel deployment](VERCEL_SETUP.md). Current migration head: `0003_admin_accounts`. See the dated [verification record](VERIFICATION.md) for completed environment checks and remaining launch checks. Do not paste credentials into chat or commit them.
 
 ## 1. Review the source and prepare accounts
 
@@ -38,9 +38,9 @@ To calculate a trusted moderator's ID locally, run this standalone helper from a
 node scripts/print-anon-id.mjs
 ```
 
-Enter the existing production `ANON_PEPPER` at the hidden prompt (at least 32 characters, with no echo or masking characters), then enter the moderator's college email at the normal prompt. The email prompt echoes normally; prompt labels use the terminal (stderr), and stdout contains only the 32-character ID plus a newline. The helper uses exactly `HMAC-SHA256(ANON_PEPPER, lowercase(trim(email)))`, truncated to 32 hex characters. It preserves pepper whitespace and never reads environment variables or files, including `.env`. It accepts no command-line arguments or piped input. Ctrl+C cancels and restores the terminal; invalid input or a non-interactive terminal exits without an ID. Never place the pepper in a command, shell variable, file, or chat. The helper neither stores inputs nor contacts any service, and is not imported by or deployed as an app endpoint.
+Enter the existing production `ANON_PEPPER` at the hidden prompt (at least 32 characters, with no echo or masking characters), then enter the moderator's Google email at the normal prompt. The email prompt echoes normally; prompt labels use the terminal (stderr), and stdout contains only the 32-character ID plus a newline. The helper uses exactly `HMAC-SHA256(ANON_PEPPER, lowercase(trim(email)))`, truncated to 32 hex characters. It preserves pepper whitespace and never reads environment variables or files, including `.env`. It accepts no command-line arguments or piped input. Ctrl+C cancels and restores the terminal; invalid input or a non-interactive terminal exits without an ID. Never place the pepper in a command, shell variable, file, or chat. The helper neither stores inputs nor contacts any service, and is not imported by or deployed as an app endpoint.
 
-Copy the resulting ID privately into Render's `ADMIN_ANON_IDS` (comma-separate multiple IDs), then redeploy/restart FastAPI. The moderator must still sign in with the same permitted college account and choose a username; deriving an ID does not create an account or bypass verification. Preserve the existing pepper to retain account identities.
+Copy the resulting ID privately into Render's `ADMIN_ANON_IDS` (comma-separate multiple IDs), then redeploy/restart FastAPI. The moderator must still sign in with the same verified Google account and choose a username; deriving an ID does not create an account or bypass verification. Preserve the existing pepper to retain account identities.
 
 ## 3. Create the Render backend
 
@@ -100,7 +100,7 @@ No Google email/profile/hosted-domain claim is stored in the forum database or r
 5. Student-facing production login and `/privacy` must be publicly reachable. If Vercel Deployment Protection blocks visitors before Google login, configure the intended production access in your project settings. Protected forum pages themselves still require member sign-in.
 6. Give previews a separate backend/database/secrets/Google client. An unconfigured preview intentionally fails preflight; do not copy production credentials into disposable previews.
 
-Keep Vercel's automatic system-environment exposure enabled so `VERCEL=1` is available. Auth throttling trusts only `x-vercel-forwarded-for`; self-hosted frontends require a reviewed proxy integration. Never copy the Redis token to Render or a `NEXT_PUBLIC_` variable. Previews must use separate Redis state/secrets. Quotas are posts 5/hour, comments 20/hour, votes 60/minute and username attempts 5/hour per anonymous account; all auth requests share 20/minute per normalized IP. Shared campus NAT users share that auth quota. Redis stores only HMAC keys; SDK analytics/telemetry are disabled. A Redis outage or missing configuration blocks protected requests with generic 503; limits return JSON 429 and `Retry-After` seconds. The explicitly enabled loopback local demo remains offline and bypasses Upstash.
+Keep Vercel's automatic system-environment exposure enabled so `VERCEL=1` is available. Auth throttling trusts Vercel-overwritten forwarding headers only when `VERCEL=1`: `x-vercel-forwarded-for`, then `x-real-ip`, then `x-forwarded-for`. Invalid higher-priority values fail closed. Self-hosted frontends require a reviewed proxy integration. Never copy the Redis token to Render or a `NEXT_PUBLIC_` variable. Previews must use separate Redis state/secrets. Quotas are posts 5/hour, comments 20/hour, votes 60/minute and username attempts 5/hour per anonymous account; sign-in, callback and sign-out actions share 60/minute per normalized IP; routine session/provider/CSRF reads do not consume this quota. Shared campus NAT users share that auth quota. Redis stores only HMAC keys; SDK analytics/telemetry are disabled. A Redis outage or missing configuration blocks protected requests with generic 503; limits return JSON 429 and `Retry-After` seconds. The explicitly enabled loopback local demo remains offline and bypasses Upstash.
 
 Generate the three random keys privately with your password manager or a local cryptographic generator. Keep the identity pepper backed up; changing it breaks account continuity. If an old unrestricted frontend used the same backend service secret, rotate only that service secret on both new production services; do not rotate the identity pepper for an existing real-user database.
 
@@ -114,15 +114,15 @@ node scripts/deployment-smoke.mjs https://YOUR-FRONTEND https://YOUR-BACKEND
 
 The runner checks open Google login text, public security headers, allowed production auth providers, callback origin, unauthenticated access rejection, backend readiness and disabled production docs. It sends no credentials and creates no records. It does **not** prove Google sign-in works.
 
-Then use two real college accounts:
+Then use a personal Gmail account and another-domain Google Workspace account:
 
 - A signs in, chooses an alias, creates a post. B sees it after reload, comments and votes. A sees B's changes after reload. Voting toggles/switches correctly. The app uses ordinary request/reload updates; live push notifications are outside this version.
 - B cannot delete A's post. A can delete it and related comments/votes disappear.
-- Personal Gmail and another-domain Google accounts are denied even if manually selected on Google's account picker. College subdomains and non-Workspace accounts are denied too.
+- Personal Gmail and verified Google Workspace accounts from other domains can join. Unverified profiles and third-party Google-linked mailboxes without authoritative ownership claims are rejected. Member password sign-up is unavailable.
 - Sign out, reload and confirm private pages/APIs are inaccessible. Old pre-policy cookies do not grant access. Production never shows shared demo accounts.
 - On a disposable staging environment, verify rate-limit boundaries/reset and JSON 429/Retry-After; confirm neither raw IPs nor tokens are logged or written to Redis keys. Verify a Redis failure returns generic 503. Unit tests use the real SDKs with mocked REST responses, not a live Redis account.
 - Verify public content responses show aliases only; the current user's own anonymous ID is the documented session exception. Never copy real cookies/tokens into shared tools.
-- Confirm RLS denies public Data API reads/writes, including Report, and backups are configured. Verify three distinct college accounts hide a test item, repeated reports do not count twice, normal members cannot use admin endpoints, and the configured admin can review/hide/delete without exposing identities. Provide an abuse/moderation contact process. No account-deletion UI is included.
+- Confirm RLS denies public Data API reads/writes, including Report, and backups are configured. Verify three distinct member accounts hide a test item, repeated reports do not count twice, normal members cannot use admin endpoints, and the configured admin can review/hide/delete without exposing identities. Provide an abuse/moderation contact process. No account-deletion UI is included.
 
 Only after those checks should you share the production frontend URL with students. Keep the backend service key and database credentials private. App rate limits do not replace edge protection or an operational moderation process.
 

@@ -14,11 +14,13 @@ The user requested a FastAPI backend and stronger security after the initial Nex
 
 `0001_fastapi_baseline` uses schema adoption for the original four forum tables and creates `RateBucket` and `UsedAssertion`. It enables PostgreSQL RLS on all six tables. The migration is idempotent through Alembic's revision state and `create_all(checkfirst=True)`. It does not copy or drop original records. The baseline cannot be downgraded destructively; restore a reviewed backup if rollback is necessary.
 
-`0002_reports` adds default-false visibility columns and a private Report table with cascading foreign keys, an exactly-one-target check, and per-target/reporter uniqueness. Existing posts/comments remain visible. RLS is enabled on Report; `/ready` requires this revision. Repeated `upgrade head` preserves records. Restore a reviewed backup for rollback.
+`0002_reports` adds default-false visibility columns and a private Report table with cascading foreign keys, an exactly-one-target check, and per-target/reporter uniqueness. Existing posts/comments remain visible. RLS is enabled on Report. Repeated `upgrade head` preserves records. Restore a reviewed backup for rollback.
+
+`0003_admin_accounts` adds `User.suspended`, default false, without changing existing identities or records. `/ready` requires this current head and checks that the forum/security tables are usable.
 
 Alembic revisions must be treated as historical schema definitions after release. Future schema changes need new explicit migrations, not edits to this revision or reliance on the current model metadata.
 
-The launcher preserves `.local/runtime.json` keys and adds an independent service signing secret. It runs Alembic before starting FastAPI, skips sample seeding after the first launch, and removes database URLs from the frontend child environment. The retained Prisma schema and old RLS SQL are compatibility references only.
+The launcher preserves `.local/runtime.json` keys and adds an independent service signing secret. It runs Alembic before starting FastAPI, skips sample seeding after the first launch, and removes database URLs from the frontend child environment. The retained Prisma schema is a compatibility reference only. Alembic owns RLS for all forum/security tables; no separate legacy RLS script is needed.
 
 ## Concurrency and abuse checks
 

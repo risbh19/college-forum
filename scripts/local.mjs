@@ -45,7 +45,7 @@ delete backendEnv.NEXTAUTH_SECRET;
 delete backendEnv.ANON_PEPPER;
 const webEnv = { ...sharedEnv, NODE_ENV: 'development', NEXTAUTH_URL: origin,
   NEXTAUTH_SECRET: settings.sessionSecret, ANON_PEPPER: settings.anonPepper,
-  GOOGLE_CLIENT_ID: '', GOOGLE_CLIENT_SECRET: '', ALLOWED_EMAIL_DOMAIN: '', NEXT_TELEMETRY_DISABLED: '1' };
+  GOOGLE_CLIENT_ID: '', GOOGLE_CLIENT_SECRET: '', NEXT_TELEMETRY_DISABLED: '1' };
 delete webEnv.DATABASE_URL;
 delete webEnv.DIRECT_URL;
 const databaseDir = path.join(localDir, 'postgres');

@@ -17,61 +17,7 @@ Reports count distinct signed members under database constraints and parent row 
 
 Upstash receives only namespaced HMAC identifiers. Raw IPs and tokens are neither logged nor passed as Redis identifiers. Redis errors fail closed, telemetry/analytics are disabled, and the offline exception remains confined to the existing explicit loopback development demo.
 
-Remaining operational verification: real Google OAuth, Vercel/Render headers and proxy trust, live Redis windows/outages, PostgreSQL RLS and concurrent reporting under the deployed configuration. Coordinated reports from three valid accounts can hide legitimate content; moderators must review reports. No unhide/appeal workflow is included.
+Remaining operational verification: real Google OAuth, Vercel/Render headers and proxy trust, live Redis windows/outages, PostgreSQL RLS and concurrent reporting under the deployed configuration. Coordinated reports from three valid accounts can hide legitimate content; moderators must review reports. The portal supports restoration, report dismissal and suspension; an operator-provided appeal contact remains necessary.
 
-## Changed files
 
-Exact paths for the combined security and reporting requests:
-
-- `.env.example`
-- `README.md`
-- `app/(main)/admin/page.tsx`
-- `app/(main)/layout.tsx`
-- `app/(main)/post/[id]/page.tsx`
-- `app/api/[...path]/route.ts`
-- `app/privacy/page.tsx`
-- `backend/app/config.py`
-- `backend/app/main.py`
-- `backend/app/models.py`
-- `backend/app/moderation.py`
-- `backend/app/schemas.py`
-- `backend/app/security.py`
-- `backend/migrations/versions/0002_reports.py`
-- `backend/tests/test_api.py`
-- `backend/tests/test_migration.py`
-- `backend/tests/test_moderation.py`
-- `components/comments/CommentList.tsx`
-- `components/posts/PostCard.tsx`
-- `components/ui/ModerationButtons.tsx`
-- `components/ui/Navbar.tsx`
-- `components/ui/ReportButton.tsx`
-- `deploy/backend.env.example`
-- `deploy/frontend.env.example`
-- `docs/DEPLOYMENT.md`
-- `docs/FASTAPI_MIGRATION.md`
-- `docs/SECURITY_REVIEW.md`
-- `docs/SPEC.md`
-- `docs/VERIFICATION.md`
-- `lib/api.ts`
-- `lib/auth.ts`
-- `lib/backend-client.ts`
-- `lib/forum-proxy.ts`
-- `lib/gateway-security.ts`
-- `lib/rate-limit.ts`
-- `lib/validators.ts`
-- `middleware.ts`
-- `next.config.mjs`
-- `package-lock.json`
-- `package.json`
-- `render.yaml`
-- `scripts/check-production.mjs`
-- `tests/api.test.ts`
-- `tests/auth.test.ts`
-- `tests/backend-client.test.ts`
-- `tests/deployment.test.ts`
-- `tests/forum-proxy.test.ts`
-- `tests/headers.test.ts`
-- `tests/middleware.test.ts`
-- `tests/rate-limit.test.ts`
-- `tests/validators.test.ts`
-- `types/index.ts`
+For current checks and deployment limits, use [Verification](VERIFICATION.md). Git history records the implementation changes; the frontend regressions live in `tests/` and backend regressions in `backend/tests/`.

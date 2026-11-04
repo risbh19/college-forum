@@ -13,7 +13,7 @@ A Reddit-style forum for one college where people can post and comment **anonymo
 | Who can read | Logged-in users only. Membership is open to all Gmail and Google Workspace domains. |
 | Who can log in | Members use verified Gmail or Google Workspace accounts from any domain. The user authorized a separate, privately configured production operator username/password at `/admin/login`; it grants no password signup for students. |
 | Local development | `npm run local` provides shared synthetic demo accounts and portable PostgreSQL without external setup. This is a user-requested development-only exception; production Google authentication is unchanged. |
-| Identity | `anonId = HMAC-SHA256(ANON_PEPPER, lowercase(email))`, first 32 hex chars. |
+| Identity | `anonId = HMAC-SHA256(ANON_PEPPER, lowercase(trim(email)))`, first 32 hex chars. |
 | Public name | Username chosen once, 3–20 chars `[a-zA-Z0-9_]`, unique case-insensitively, not changeable in v1. |
 | Boards | Fixed list in `lib/boards.ts`: general, cse, hostel, placements, confessions. |
 | Votes | One vote per user per post: UP or DOWN. Clicking the same vote again removes it. |
@@ -64,7 +64,7 @@ No response ever contains `userId`/anonId. `author` always means `{ username }`.
 
 | Method & path | Body / query | Success response |
 |---|---|---|
-| `POST /api/username` | `{ username }` | `200 { username }` · `409` if taken (rely on the DB unique constraint, catch Prisma `P2002`) · `409` if the user already has one |
+| `POST /api/username` | `{ username }` | `200 { username }` · `409` if taken or already set (database unique constraints; SQLAlchemy `IntegrityError`) |
 | `GET /api/posts` | `?board=<slug>&cursor=<postId>` (20 per page) | `{ posts: PostSummary[], nextCursor: string \| null }` |
 | `POST /api/posts` | `{ title, body, board }` | `201 PostSummary` |
 | `GET /api/posts/[id]` | — | `PostSummary` |
@@ -92,7 +92,7 @@ type CommentView = { id: string; body: string; createdAt: string; author: Author
 ```
 `score = UP votes − DOWN votes`. `isMine` is computed on the server by comparing `userId` to the session; the raw ID is never sent.
 
-JSON bodies over 20 KiB return 413 before parsing. Middleware rejects POST/DELETE/PATCH without the exact configured Origin (except NextAuth's own CSRF-protected subtree). Upstash limits per account: posts 5/hour, comments 20/hour, votes 60/min, username 5/hour; auth routes share 20/min per trusted Vercel IP. Rate rejections return JSON 429 and Retry-After; unavailable Redis fails closed with 503. Only namespaced HMAC identifiers go to Redis. The explicit development demo remains offline.
+JSON bodies over 20 KiB return 413 before parsing. Middleware rejects POST/DELETE/PATCH without the exact configured Origin (except NextAuth's own CSRF-protected subtree). Upstash limits per account: posts 5/hour, comments 20/hour, votes 60/min, username 5/hour; sign-in, callback and sign-out actions share 60/min per trusted Vercel IP. Routine session/provider/CSRF reads do not spend that auth quota. Rate rejections return JSON 429 and Retry-After; unavailable Redis fails closed with 503. Only namespaced HMAC identifiers go to Redis. The explicit development demo remains offline.
 
 ## 6. Privacy model — what is and isn't protected
 
@@ -103,7 +103,7 @@ JSON bodies over 20 KiB return 413 before parsing. Middleware rejects POST/DELET
 
 **Honest limits (do not claim more than this in the UI or README)**
 - Google necessarily sees that you logged in. Vercel and Supabase infrastructure logs may contain IP addresses even though our app does not store them.
-- Whoever has **both** the database and `ANON_PEPPER` plus a list of emails can test whether a given email has an account. Keep the pepper only in Vercel/Supabase-side env settings, never in git, and limit who can access them.
+- Whoever has **both** the database and `ANON_PEPPER` plus a list of emails can test whether a given email has an account. Keep the pepper only in Next.js server settings, never in Git or the database service, and limit who can access it.
 - Anonymity is also behavioural: writing style, timing and details in posts can identify someone.
 - `ANON_PEPPER` must never change after launch. Losing it = every user gets a new identity.
 
@@ -120,16 +120,16 @@ JSON bodies over 20 KiB return 413 before parsing. Middleware rejects POST/DELET
 | `ADMIN_LOGIN_ENABLED`, `ADMIN_LOGIN_VERSION` | Next.js only: explicit production operator-login flag and revocable session version |
 | `ADMIN_LOGIN_USERNAME`, `ADMIN_LOGIN_PASSWORD_HASH` | FastAPI only: dedicated username and salted scrypt verifier; no plaintext password |
 | `ANON_PEPPER` | HMAC key for anonymous IDs (`openssl rand -hex 32`, min 32 chars) |
-| `DATABASE_URL` | Supabase pooled connection (runtime, serverless-friendly) |
-| `DIRECT_URL` | Supabase direct/session connection (used by `prisma db push`) |
+| `DATABASE_URL` | FastAPI only: PostgreSQL/Supabase runtime connection |
+| `DIRECT_URL` | Alembic only: direct/session PostgreSQL connection for migrations |
 
-Secrets live in `.env` locally (git-ignored; Next.js and the Prisma CLI both read it) and in Vercel's dashboard in production. `.env.example` lists names only.
+For configured development, secrets live in the ignored root `.env`; Next.js and the Python launcher/migration tools load it. Production uses service-specific Vercel and Render settings. The offline local demo uses ignored `.local/` instead. `.env.example` lists names without secret values.
 
 ## 8. Security checklist (verify before launch)
 
-- [ ] `.env` is git-ignored; `git log -p | grep -i secret` finds nothing real
+- [ ] Private `.env` files and `.local/` are ignored and absent from tracked files and published artifacts
 - [ ] No API response contains `userId`
-- [ ] Every mutating route checks the session and validates with zod
+- [ ] Every member mutation authenticates the session, enforces same-origin gateway limits, and validates strict Pydantic inputs in FastAPI; frontend forms use Zod
 - [ ] Delete checks ownership on the server
 - [ ] No `dangerouslySetInnerHTML` anywhere
 - [ ] `/api/auth/session` returns only `user.id`, `user.username` and `expires`

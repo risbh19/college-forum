@@ -20,7 +20,7 @@ Set these under Render → service → Environment:
 
 Values must be a single line with no surrounding `< >`. Use the Supabase session pooler on port 5432 for migrations; the transaction pooler on port 6543 is not a migration target. The supplied port-5432 session URL can serve both variables initially. Never paste a local Windows `sslrootcert` path into Render: the image includes the public Supabase CA and selects it automatically. Custom provider CAs can still use an explicit mounted `sslrootcert`.
 
-Migration head `0002_reports` was applied and database RLS verified during setup. The paid blueprint's pre-deploy command can safely repeat `alembic upgrade head`. If your existing service uses a different plan, confirm its migration mechanism before deploying. Set the health-check path to `/ready`; it must return HTTP 200 before the frontend is released. `/health` alone does not verify database access.
+The required migration head is `0003_admin_accounts`; see the dated [verification record](VERIFICATION.md). Review and back up the target before applying missing migrations. The paid blueprint's pre-deploy command repeats `alembic upgrade head`. If your existing service uses a different plan, confirm its migration mechanism before deploying. Set the health-check path to `/ready`; it must return HTTP 200 before the frontend is released. `/health` alone does not verify database access.
 
 ## 2. Import the Next.js frontend
 
