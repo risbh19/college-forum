@@ -51,4 +51,14 @@ Deployment remains unverified until these checks are actually completed against 
 
 ## Service setup checks completed
 
-The supplied Supabase session-pooler connection was tested with full TLS verification using the public Supabase CA. The database had no existing forum rows before applying `0001_fastapi_baseline` and `0002_reports`. The current head and RLS on User, Post, Comment, Vote, Report, RateBucket and UsedAssertion were verified. Upstash's read-only PING succeeded. No secret values were committed or written to diagnostic output. Render's public readiness and real Google sign-in were not verified; this is not a completed production deployment.
+During initial setup, the supplied Supabase session-pooler connection was tested with full TLS verification using the public Supabase CA. The database had no existing forum rows before applying `0001_fastapi_baseline` and `0002_reports`. That migration head and RLS on User, Post, Comment, Vote, Report, RateBucket and UsedAssertion were verified. Upstash's read-only PING succeeded. No secret values were committed or written to diagnostic output. Render's public readiness and real Google sign-in were not verified during that initial setup.
+
+## Live admin recovery verified — 2026-11-05
+
+- Resumed the existing Vercel project and Render service without changing their plans.
+- Saved and validated a private database backup before applying `0003_admin_accounts`. Verified the migration version and preserved all four existing accounts and both posts; existing accounts remained unsuspended. The backup and administrator credentials are excluded from Git.
+- Confirmed the live backend returned HTTP 200 for both `/health` and `/ready`.
+- Verified an actual sign-in through the live frontend's `/admin/login` flow, an authenticated administrator session, and HTTP 200 from `/api/admin/overview`. Signed out the test session afterward. No credentials, cookies, tokens, or account identifiers were included in diagnostic output.
+- `npm run typecheck` and `npm run lint` passed after recovery.
+
+These checks establish live administrator access at the time of recovery. Real college Google sign-in, student posting/voting across accounts, live moderation mutations, and the remaining deployment checklist above still require separate verification.
