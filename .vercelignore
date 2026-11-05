@@ -1,5 +1,7 @@
 .git
 .local
+.agents
+design-system
 .env
 .env.*
 !.env.example

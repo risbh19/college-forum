@@ -26,10 +26,10 @@ export default function VoteButton({ postId, initialScore, initialMyVote }: { po
     } catch (failure) { setState(previous); setError(failure instanceof Error ? failure.message : "Couldn't save vote. Try again."); }
     finally { setPending(false); }
   }
-  return <div className="relative flex shrink-0 flex-col items-center self-start rounded-xl bg-slate-50 p-1">
-    <button type="button" aria-label="Upvote" aria-pressed={state.myVote === "UP"} disabled={pending} onClick={() => vote("UP")} className={`rounded-lg p-1.5 transition disabled:opacity-50 ${state.myVote === "UP" ? "bg-orange-100 text-orange-600" : "text-slate-400 hover:bg-slate-200 hover:text-slate-700"}`}><Icon name="arrow-up" className="h-[18px] w-[18px]" /></button>
-    <span aria-live="polite" className={`py-1 text-xs font-bold tabular-nums ${state.myVote === "UP" ? "text-orange-600" : state.myVote === "DOWN" ? "text-blue-600" : "text-slate-700"}`}>{state.score}</span>
-    <button type="button" aria-label="Downvote" aria-pressed={state.myVote === "DOWN"} disabled={pending} onClick={() => vote("DOWN")} className={`rounded-lg p-1.5 transition disabled:opacity-50 ${state.myVote === "DOWN" ? "bg-blue-100 text-blue-600" : "text-slate-400 hover:bg-slate-200 hover:text-slate-700"}`}><Icon name="arrow-down" className="h-[18px] w-[18px]" /></button>
-    {error && <p role="alert" className="absolute left-0 top-full z-10 mt-2 w-52 rounded-lg border border-red-100 bg-white p-3 text-xs text-red-600 shadow-md">{error}</p>}
+  return <div aria-busy={pending} className="relative flex shrink-0 flex-col items-center self-start rounded-xl bg-canvas p-1">
+    <button type="button" aria-label="Upvote" aria-pressed={state.myVote === "UP"} disabled={pending} onClick={() => vote("UP")} className={`inline-flex h-11 w-11 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${state.myVote === "UP" ? "bg-orange-100 text-orange-700" : "text-muted hover:bg-slate-200 hover:text-ink"}`}><Icon name="arrow-up" className="h-[18px] w-[18px]" /></button>
+    <span role="status" aria-live="polite" aria-atomic="true" className={`py-1 text-sm font-bold tabular-nums ${state.myVote === "UP" ? "text-orange-700" : state.myVote === "DOWN" ? "text-blue-700" : "text-ink"}`}><span className="sr-only">Post score: </span>{state.score}</span>
+    <button type="button" aria-label="Downvote" aria-pressed={state.myVote === "DOWN"} disabled={pending} onClick={() => vote("DOWN")} className={`inline-flex h-11 w-11 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${state.myVote === "DOWN" ? "bg-blue-100 text-blue-700" : "text-muted hover:bg-slate-200 hover:text-ink"}`}><Icon name="arrow-down" className="h-[18px] w-[18px]" /></button>
+    {error && <p role="alert" className="absolute left-0 top-full z-10 mt-2 w-52 rounded-lg border border-red-100 bg-white p-3 text-sm text-red-600 shadow-md">{error}</p>}
   </div>;
 }

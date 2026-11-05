@@ -305,8 +305,7 @@ try {
   const deleted = await api(one, postPath, { method: 'DELETE' }, 200, 'Owner deletion');
   check(deleted.success === true, 'Owner deletion did not report success');
   await api(one, postPath, {}, 404, 'Deleted post read');
-  const afterDelete = await api(two, commentsPath, {}, 200, 'Deleted post comments');
-  check(Array.isArray(afterDelete.comments) && afterDelete.comments.length === 0, 'Deleted post retained readable comments');
+  await api(two, commentsPath, {}, 404, 'Deleted post comments');
   await api(two, '/api/votes', { method: 'POST', json: { postId: post.id, type: 'UP' } }, 404, 'Deleted post vote');
   passed('owner deletion removes the post and its comments and prevents further votes');
 

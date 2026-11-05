@@ -3,10 +3,25 @@
 @tailwind utilities;
 
 @layer base {
-  html { @apply scroll-smooth; }
-  body { @apply min-h-screen; }
+  html { @apply scroll-pt-40; }
+  body { @apply min-h-screen bg-canvas text-ink; }
   ::selection { @apply bg-indigo-100 text-indigo-950; }
-  :focus-visible { @apply outline outline-2 outline-offset-4 outline-indigo-600; }
+  :focus-visible { @apply outline outline-2 outline-offset-4 outline-indigo-700; }
   button, input, select, textarea { font: inherit; }
   button:disabled { @apply cursor-not-allowed; }
+  button { @apply min-h-11 cursor-pointer touch-manipulation; }
+  input, select, textarea { @apply text-base; }
+  input, select { @apply min-h-12; }
+  summary { @apply cursor-pointer; }
+  :target { @apply scroll-mt-40; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

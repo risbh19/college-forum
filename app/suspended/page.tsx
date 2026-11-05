@@ -14,5 +14,5 @@ export default async function SuspendedPage() {
     else throw error;
   }
   if (!suspended) redirect('/');
-  return <main className="mx-auto max-w-lg px-6 py-24"><div className="rounded-2xl border border-amber-200 bg-white p-8"><h1 className="text-2xl font-bold text-slate-900">Your account is suspended</h1><p className="mt-4 text-sm leading-6 text-slate-600">Forum access is temporarily unavailable for this username. Contact the forum administrator through your campus support channel to request a review.</p><div className="mt-6 flex gap-5 text-sm text-indigo-600"><Link href="/">Check access again</Link><Link href="/api/auth/signout" prefetch={false}>Sign out</Link></div></div></main>;
+  return <main className="mx-auto max-w-lg px-6 py-24"><div className="rounded-2xl border border-amber-200 bg-white p-8"><h1 className="text-2xl font-bold text-ink">Your account is suspended</h1><p className="mt-4 text-sm leading-6 text-muted">Forum access is temporarily unavailable for this username. Contact the forum administrator through your campus support channel to request a review.</p><div className="mt-6 flex gap-5 text-sm text-indigo-600"><Link href="/">Check access again</Link><Link href="/api/auth/signout" prefetch={false}>Sign out</Link></div></div></main>;
 }

@@ -25,16 +25,16 @@ export default function ReportButton({ postId, commentId }: { postId?: string; c
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Could not send report.'); }
     finally { setPending(false); }
   }
-  return <div className="mt-2 text-xs">
-    {sent ? <p role="status" className="text-slate-500">Report submitted</p> : <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} className="rounded px-2 py-1 text-slate-500 hover:bg-slate-100">Report</button>}
-    {open && <form id={id} onSubmit={report} className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
-      <label htmlFor={`${id}-reason`} className="block font-medium text-slate-700">Reason for reporting</label>
-      <select id={`${id}-reason`} value={reason} disabled={pending} onChange={event => setReason(event.target.value)} className="w-full rounded border border-slate-300 bg-white p-2">
+  return <div className="mt-2 text-sm">
+    {sent ? <p role="status" className="text-muted">Report submitted</p> : <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} className="rounded px-2 py-1 text-muted hover:bg-slate-100">Report</button>}
+    {open && <form id={id} onSubmit={report} className="mt-2 space-y-2 rounded-lg border border-line bg-canvas p-3">
+      <label htmlFor={`${id}-reason`} className="block font-medium text-ink">Reason for reporting</label>
+      <select id={`${id}-reason`} value={reason} disabled={pending} onChange={event => setReason(event.target.value)} aria-describedby={error ? `${id}-error` : undefined} className="w-full rounded-xl border border-control bg-white p-3 text-base">
         {['Harassment or bullying', 'Spam or misleading content', 'Threats or harmful content', 'Sharing personal information'].map(value => <option key={value}>{value}</option>)}
       </select>
-      <p className="text-slate-500">Three distinct reports hide content for moderator review.</p>
-      <button disabled={pending} className="rounded bg-indigo-600 px-3 py-2 text-white disabled:opacity-50">{pending ? 'Submitting…' : 'Submit report'}</button>
+      <p className="text-muted">Three distinct reports hide content for moderator review.</p>
+      <div className="flex flex-wrap gap-3"><button disabled={pending} className="rounded-xl bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 disabled:opacity-50">{pending ? 'Submitting…' : 'Submit report'}</button><button type="button" disabled={pending} onClick={() => setOpen(false)} className="rounded-xl px-3 py-2 text-muted hover:bg-white">Cancel</button></div>
     </form>}
-    {error && <p role="alert" className="mt-2 text-red-600">{error}</p>}
+    {error && <p id={`${id}-error`} role="alert" className="mt-2 text-red-700">{error}</p>}
   </div>;
 }

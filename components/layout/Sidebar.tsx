@@ -1,13 +1,18 @@
+import Link from "next/link";
 import BoardNavigation from "@/components/layout/BoardNavigation";
 import { Icon } from "@/components/ui/Icon";
 
 export default function Sidebar() {
-  return <aside className="sticky top-[108px] hidden w-52 shrink-0 self-start md:block lg:w-56">
-    <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Your campus</p>
+  return <aside aria-label="Forum navigation" className="sticky top-[108px] hidden w-52 shrink-0 self-start md:block lg:w-56">
+    <p className="mb-4 px-3 text-xs font-semibold uppercase tracking-widest text-muted">Your community</p>
     <BoardNavigation />
-    <div className="mx-3 my-7 border-t border-slate-200" />
-    <div className="mx-1 rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-4"><span className="mb-3 inline-flex rounded-lg bg-white p-2 text-indigo-500 shadow-sm"><Icon name="shield" className="h-4 w-4" /></span><h2 className="text-xs font-semibold text-slate-800">Your voice. Your space.</h2><p className="mt-2 text-[11px] leading-[1.8] text-slate-500">An alias lets you speak freely. Keep identifying details out of your posts.</p></div>
-    <p className="px-4 pt-7 text-[10px] leading-5 text-slate-400">Made for the conversations<br />that make campus, campus.</p>
-    <p className="px-4 pt-3 text-[10px] text-slate-400">College Forum · A little more connected.</p>
+    <div className="my-7 border-t border-line" />
+    <section className="rounded-2xl border border-line bg-white p-5 shadow-panel">
+      <Icon name="shield" className="mb-4 h-6 w-6 text-indigo-700" />
+      <h2 className="text-sm font-semibold text-ink">An alias. A little freedom.</h2>
+      <p className="mt-2 text-sm leading-6 text-muted">Your posts carry your chosen name. Keep identifying details out of the conversation.</p>
+      <Link href="/privacy" className="mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-indigo-700 hover:text-indigo-900">About your privacy<Icon name="arrow-right" className="h-4 w-4" /></Link>
+    </section>
+    <p className="px-3 pt-7 text-xs leading-6 text-muted">A place for the conversations<br />that make campus feel like home.</p>
   </aside>;
 }

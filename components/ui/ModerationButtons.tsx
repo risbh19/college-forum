@@ -22,7 +22,7 @@ export default function ModerationButtons({ id, kind, hidden, reports = false }:
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Could not moderate content.'); }
     finally { setPending(false); }
   }
-  return <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+  return <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
     <button type="button" disabled={pending} onClick={() => moderate('visibility')} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50">{hidden ? 'Restore' : 'Hide'}</button>
     {reports && <button type="button" disabled={pending} onClick={() => moderate('dismiss')} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50">Dismiss reports</button>}
     <button type="button" disabled={pending} onClick={() => moderate('delete')} className="rounded bg-red-50 px-3 py-2 text-red-700 disabled:opacity-50">Delete</button>
