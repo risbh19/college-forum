@@ -1,10 +1,37 @@
+<div align="center">
+
 # College Forum
+
+**A campus conversation starts with a username.**
 
 A campus discussion forum with Google sign-in, permanent usernames, five boards, posts, comments, votes and moderation. Personal Gmail and verified Google Workspace accounts from any domain can join. Members use Google only; there is no email/password sign-up.
 
+![TypeScript](https://img.shields.io/badge/TypeScript-334155?style=flat-square)
+![Next.js](https://img.shields.io/badge/Next.js-334155?style=flat-square)
+![FastAPI](https://img.shields.io/badge/FastAPI-334155?style=flat-square)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-334155?style=flat-square)
+
+[Quick start](#quick-start) · [Architecture](#architecture) · [Testing](#testing)
+
+</div>
+
+---
+
 The database stores a keyed anonymous ID and chosen username, never the Google email, real name, photo or Google ID. This provides pseudonyms, not guaranteed anonymity: Google sees sign-in, hosting providers may retain network logs, and post content can identify its author.
 
-## Run locally
+## The problem
+
+Campus discussions need a place for questions, shared experiences and community feedback. College Forum gives members a consistent username and discussion boards, with reporting and administrator tools to manage content.
+
+## At a glance
+
+| Area | What it covers |
+| --- | --- |
+| Community | Five boards, posts, comments and votes |
+| Identity | Google sign-in and keyed pseudonymous member IDs |
+| Moderation | Reports, automatic hiding and administrator review |
+
+## Quick start
 
 Requires Node.js 20.9+ and Python 3.11+ (3.12 recommended).
 
@@ -23,10 +50,12 @@ Local records, credentials and stable identity/session keys stay in ignored `.lo
 
 ## Architecture
 
-```text
-Browser -> Next.js pages / authenticated same-origin gateway -> FastAPI -> PostgreSQL
-                |
-        NextAuth v4 Google OAuth
+```mermaid
+flowchart TD
+  browser["Browser"] --> web["Next.js gateway"]
+  web --> oauth["Google OAuth"]
+  web --> api["FastAPI"]
+  api --> db["PostgreSQL"]
 ```
 
 | Layer | Implementation |
@@ -60,7 +89,7 @@ Three distinct reports auto-hide a post/comment. The backend administrator allow
 
 The dedicated operator sign-in is available by direct URL at `/admin/login`; it is not linked from the member login page. Configure it privately with [Admin login setup](docs/ADMIN_LOGIN.md). Member Google authentication and the local development demo remain separate.
 
-## Verify
+## Testing
 
 ```sh
 npm run typecheck
